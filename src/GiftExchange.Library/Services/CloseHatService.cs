@@ -41,7 +41,7 @@ internal class CloseHatService : IApiGatewayHandler
                 FieldsToModerate = [],
                 ValidHatStatuses =
                 [
-                    HatStatus.InvitationsSent
+                    HatStatus.CoolingOff
                 ]
             })
             .ConfigureAwait(false);

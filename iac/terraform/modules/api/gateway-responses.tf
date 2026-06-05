@@ -41,7 +41,7 @@ resource "aws_api_gateway_method_response" "get_200_response" {
   http_method = var.gateway_http_method
   status_code = "200"
   response_models = {
-    "application/json" = aws_api_gateway_model.good_response_model[0].name
+    "application/json" = one(aws_api_gateway_model.good_response_model[*].name)
   }
   response_parameters = {
     "method.response.header.Access-Control-Allow-Methods" = true
