@@ -20,9 +20,11 @@ public static class HatStatus
     public static string InvitationsSent => "INVITATIONS_SENT";
 
     /// <summary>
-    /// Invitations have been sent and the gift exchange is in a waiting period before it can be closed.
+    /// Invitations have been sent, and a period of time has passed. The gift exchange can be closed.
+    /// Until a gift exchange has cooled off, it cannot be closed.
+    /// This protects the user from accidentally closing a gift exchange prematurely, revealing picked names.
     /// </summary>
-    public static string CoolingOff => "COOLING_OFF";
+    public static string CooledOff => "COOLED_OFF";
 
     /// <summary>
     /// The owner of the gift exchange indicated that the gift exchange has concluded. The names of picked recipients can be revealed, and no further changes can be made.
@@ -37,7 +39,7 @@ public static class HatStatuses
         HatStatus.ReadyForAssignment,
         HatStatus.NamesAssigned,
         HatStatus.InvitationsSent,
-        HatStatus.CoolingOff,
+        HatStatus.CooledOff,
         HatStatus.Closed
     ];
 }

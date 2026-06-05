@@ -396,7 +396,7 @@ export function GiftExchangeDetail({ userEmail, givenName, onSignOut }: GiftExch
                 ) : (
                   <h2>{hat.name}</h2>
                 )}
-                {hat.status !== 'INVITATIONS_SENT' && hat.status !== 'COOLING_OFF' && hat.status !== 'CLOSED' && (
+                {hat.status !== 'INVITATIONS_SENT' && hat.status !== 'COOLED_OFF' && hat.status !== 'CLOSED' && (
                   <div className="hat-actions">
                     {isEditing ? (
                       <>
@@ -446,7 +446,7 @@ export function GiftExchangeDetail({ userEmail, givenName, onSignOut }: GiftExch
                     <div className="status-step-label">Invitations Sent</div>
                   </div>
                   <div className="status-step-connector"></div>
-                  <div className={`status-step ${hat.status === 'COOLING_OFF' ? 'active' : ''}`}>
+                  <div className={`status-step ${hat.status === 'COOLED_OFF' ? 'active' : ''}`}>
                     <div className="status-step-indicator"></div>
                     <div className="status-step-label">Cooling Off</div>
                   </div>
@@ -538,7 +538,7 @@ export function GiftExchangeDetail({ userEmail, givenName, onSignOut }: GiftExch
                   </div>
                 )}
 
-                {hat.status === 'COOLING_OFF' && (
+                {hat.status === 'COOLED_OFF' && (
                   <div className="action-container">
                     <button
                       className="action-button action-close-button"
@@ -600,7 +600,7 @@ export function GiftExchangeDetail({ userEmail, givenName, onSignOut }: GiftExch
                       <p className="participants-edit-hint">Click a participant row to edit eligible recipients.</p>
                     )}
                   </div>
-                  {hat.status !== 'CLOSED' && hat.status !== 'INVITATIONS_SENT' && hat.status !== 'COOLING_OFF' && (
+                  {hat.status !== 'CLOSED' && hat.status !== 'INVITATIONS_SENT' && hat.status !== 'COOLED_OFF' && (
                     <button
                       className="primary-button"
                       onClick={() => setShowAddParticipantModal(true)}
@@ -610,7 +610,7 @@ export function GiftExchangeDetail({ userEmail, givenName, onSignOut }: GiftExch
                   )}
                 </div>
                 {hat.participants.length > 0 ? (
-                  (hat.status === 'CLOSED' || hat.status === 'INVITATIONS_SENT' || hat.status === 'COOLING_OFF') ? (
+                  (hat.status === 'CLOSED' || hat.status === 'INVITATIONS_SENT' || hat.status === 'COOLED_OFF') ? (
                     <table className="participants-table">
                       <thead>
                         <tr>
@@ -755,7 +755,7 @@ export function GiftExchangeDetail({ userEmail, givenName, onSignOut }: GiftExch
                 )}
               </div>
 
-              {hat.status !== 'INVITATIONS_SENT' && hat.status !== 'COOLING_OFF' && hat.status !== 'CLOSED' && (
+              {hat.status !== 'INVITATIONS_SENT' && hat.status !== 'COOLED_OFF' && hat.status !== 'CLOSED' && (
                 <div className="delete-section">
                   <button
                     className="danger-button"

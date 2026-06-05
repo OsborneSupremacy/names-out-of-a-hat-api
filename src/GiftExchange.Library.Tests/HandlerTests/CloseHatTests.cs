@@ -33,13 +33,14 @@ public class CloseHatTests : IClassFixture<DynamoDbFixture>
     }
 
     [Fact]
-    public async Task CloseHat_GivenCoolingOffStatus_ReturnsOkResponse()
+    public async Task CloseHat_GivenCooledOffStatus_ReturnsOkResponse()
     {
         // arrange
         var hat = await _testDataService.CreateTestHatAsync();
 
         await _giftExchangeProvider
-            .UpdateHatStatusAsync(hat.Organizer.Email, hat.Id, HatStatus.CoolingOff) ;
+            .UpdateHatStatusAsync(hat.Organizer.Email, hat.Id, HatStatus.CooledOff);
+
         var innerRequest = new CloseHatRequest
         {
             OrganizerEmail = hat.Organizer.Email,
@@ -57,8 +58,7 @@ public class CloseHatTests : IClassFixture<DynamoDbFixture>
         response.StatusCode.Should().Be((int)HttpStatusCode.OK);
 
         var updatedHat = await _testDataService
-            .GetHatAsync(hat.Organizer.Email, hat.Id)
-;
+            .GetHatAsync(hat.Organizer.Email, hat.Id);
 
         updatedHat.Status.Should().Be(HatStatus.Closed);
     }
@@ -70,8 +70,7 @@ public class CloseHatTests : IClassFixture<DynamoDbFixture>
         var hat = await _testDataService.CreateTestHatAsync();
 
         await _giftExchangeProvider
-            .UpdateHatStatusAsync(hat.Organizer.Email, hat.Id, HatStatus.InvitationsSent)
-;
+            .UpdateHatStatusAsync(hat.Organizer.Email, hat.Id, HatStatus.InvitationsSent);
 
         var innerRequest = new CloseHatRequest
         {
