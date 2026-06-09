@@ -16,6 +16,8 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
 
     private readonly IAmazonSQS _sqsClient;
 
+    private readonly ISchedulerService _schedulerService;
+
     private readonly string _queueUrl;
 
     private readonly HatPreconditionValidator _hatPreconditionValidator;
@@ -26,7 +28,8 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
         HatPreconditionValidator hatPreconditionValidator,
         JsonService jsonService,
         EmailCompositionService emailCompositionService,
-        IAmazonSQS sqsClient
+        IAmazonSQS sqsClient,
+        ISchedulerService schedulerService
         )
     {
         _giftExchangeProvider = giftExchangeProvider ?? throw new ArgumentNullException(nameof(giftExchangeProvider));
@@ -37,6 +40,7 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
             emailCompositionService ?? throw new ArgumentNullException(nameof(emailCompositionService));
         _sqsClient = sqsClient ?? throw new ArgumentNullException(nameof(sqsClient));
         _queueUrl = EnvReader.GetStringValue("INVITATIONS_QUEUE_URL");
+        _schedulerService = schedulerService ?? throw new ArgumentNullException(nameof(schedulerService));
     }
 
     public Task<APIGatewayProxyResponse> FunctionHandler(APIGatewayProxyRequest request, ILambdaContext context) =>
@@ -92,8 +96,11 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
         await Task.WhenAll(sqsTasks)
             .ConfigureAwait(false);
 
-        await _giftExchangeProvider
+        var invitationsQueuedAt = await _giftExchangeProvider
             .MarkInvitationsAsQueuedAsync(request.OrganizerEmail, request.HatId)
+            .ConfigureAwait(false);
+
+        await _schedulerService.CreateCooledOffScheduleAsync(request, invitationsQueuedAt)
             .ConfigureAwait(false);
 
         return new Result<StatusCodeOnlyResponse>(new StatusCodeOnlyResponse { StatusCode = HttpStatusCode.OK}, HttpStatusCode.OK);

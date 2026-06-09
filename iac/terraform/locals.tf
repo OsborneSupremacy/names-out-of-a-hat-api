@@ -1,4 +1,6 @@
 locals {
+  cooled_off_scheduler_group_name = "giftexchange-cooled-off"
+
   common_environment_variables = {
     "TABLE_NAME" = aws_dynamodb_table.giftexchange.name,
     "INVITATIONS_QUEUE_URL" = aws_sqs_queue.invitations-queue.url,

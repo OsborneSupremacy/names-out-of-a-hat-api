@@ -2,6 +2,7 @@
 using System.Text.Json.Serialization.Metadata;
 using Amazon;
 using Amazon.Extensions.NETCore.Setup;
+using Amazon.Scheduler;
 using Amazon.SimpleEmail;
 using Amazon.SQS;
 using GiftExchange.Library.Validators;
@@ -27,6 +28,7 @@ internal static class ServiceProviderBuilder
                 .AddDefaultAWSOptions(new AWSOptions { Region = region })
                 .AddAWSService<IAmazonDynamoDB>()
                 .AddAWSService<IAmazonSQS>()
+                .AddAWSService<IAmazonScheduler>()
                 .AddAWSService<IAmazonComprehend>()
                 .AddSingleton<IAmazonSimpleEmailService, AmazonSimpleEmailServiceClient>(); // AddAWSService fails for SES
         }
@@ -86,6 +88,8 @@ internal static class ServiceProviderBuilder
 
                 .AddSingleton<ValidationService>() // registered separately for direct use
                 .AddSingleton<EmailCompositionService>()
-                .AddSingleton<InvitationQueueHandlerService>();
+                .AddSingleton<InvitationQueueHandlerService>()
+                .AddSingleton<ISchedulerService, SchedulerService>()
+            ;
     }
 }

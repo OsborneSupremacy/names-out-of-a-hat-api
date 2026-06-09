@@ -7,12 +7,18 @@ public class GiftExchangeProvider
 {
     private readonly IAmazonDynamoDB _dynamoDbClient;
 
+    private readonly ILogger<GiftExchangeProvider> _logger;
+
     private readonly string _tableName;
 
     // ReSharper disable once ConvertToPrimaryConstructor
-    public GiftExchangeProvider(IAmazonDynamoDB dynamoDbClient)
+    public GiftExchangeProvider(
+        IAmazonDynamoDB dynamoDbClient,
+        ILogger<GiftExchangeProvider> logger
+        )
     {
         _dynamoDbClient = dynamoDbClient ?? throw new ArgumentNullException(nameof(dynamoDbClient));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tableName = EnvReader.GetStringValue("TABLE_NAME");
     }
 
@@ -491,11 +497,13 @@ public class GiftExchangeProvider
             .ConfigureAwait(false);
     }
 
-    public async Task MarkInvitationsAsQueuedAsync(
+    public async Task<DateTimeOffset> MarkInvitationsAsQueuedAsync(
         string organizerEmail,
         Guid hatId
         )
     {
+        var invitationsQueuedDate = DateTimeOffset.UtcNow;
+
         var updateRequest = new UpdateItemRequest
         {
             TableName = _tableName,
@@ -508,12 +516,48 @@ public class GiftExchangeProvider
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
                 [":status"] = new() { S = HatStatus.InvitationsSent },
-                [":invitationsQueuedDate"] = new() { S = DateTimeOffset.UtcNow.ToString("o") }
+                [":invitationsQueuedDate"] = new() { S = invitationsQueuedDate.ToString("o") }
             }
         };
 
         await _dynamoDbClient
             .UpdateItemAsync(updateRequest)
             .ConfigureAwait(false);
+
+        return invitationsQueuedDate;
+    }
+
+    public async Task TryTransitionHatToCooledOffAsync(
+        string organizerEmail,
+        Guid hatId
+        )
+    {
+        var updateRequest = new UpdateItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["PK"] = new() { S = $"ORGANIZER#{organizerEmail}#HAT" },
+                ["SK"] = new() { S = $"HAT#{hatId}" }
+            },
+            ConditionExpression = "HatStatus = :expectedStatus",
+            UpdateExpression = "SET HatStatus = :newStatus",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":expectedStatus"] = new() { S = HatStatus.InvitationsSent },
+                [":newStatus"] = new() { S = HatStatus.CooledOff }
+            }
+        };
+
+        try
+        {
+            await _dynamoDbClient
+                .UpdateItemAsync(updateRequest)
+                .ConfigureAwait(false);
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            _logger.LogError("Couldn't update HatStatus to to COOLED_OFF for hat {hatId}, since it does not have expected status. Will not retry.", hatId);
+        }
     }
 }

@@ -10,7 +10,14 @@ resource "aws_lambda_function" "giftexchange_app" {
   source_code_hash = filebase64sha256(local.publish_zip_path)
   role             = aws_iam_role.giftexchange_app_exec_role.arn
   environment {
-    variables = local.common_environment_variables
+    variables = merge(
+      local.common_environment_variables,
+      {
+        COOLED_OFF_SCHEDULER_TARGET_ARN = aws_lambda_function.cooled-off-scheduler-handler.arn
+        COOLED_OFF_SCHEDULER_ROLE_ARN   = aws_iam_role.cooled-off-scheduler-execution-role.arn
+        COOLED_OFF_SCHEDULER_GROUP_NAME = aws_scheduler_schedule_group.cooled-off.name
+      }
+    )
   }
 }
 
@@ -104,6 +111,37 @@ resource "aws_iam_role_policy" "giftexchange_app_comprehend_policy" {
           "comprehend:DetectToxicContent"
         ]
         Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "giftexchange_app_scheduler_policy" {
+  name = "giftexchange-app-scheduler-policy"
+  role = aws_iam_role.giftexchange_app_exec_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "scheduler:CreateSchedule",
+          "scheduler:UpdateSchedule"
+        ]
+        Resource = [
+          aws_scheduler_schedule_group.cooled-off.arn,
+          "arn:aws:scheduler:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:schedule/${aws_scheduler_schedule_group.cooled-off.name}/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole"
+        ]
+        Resource = [
+          aws_iam_role.cooled-off-scheduler-execution-role.arn
+        ]
       }
     ]
   })
