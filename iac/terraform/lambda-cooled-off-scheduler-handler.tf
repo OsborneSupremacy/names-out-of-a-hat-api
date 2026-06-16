@@ -4,7 +4,7 @@ resource "aws_scheduler_schedule_group" "cooled-off" {
 
 resource "aws_lambda_function" "cooled-off-scheduler-handler" {
   function_name    = "giftexchange-cooled-off-scheduler-handler"
-  description      = "Function that transitions hats from INVITATIONS_SENT to COOLED_OFF"
+  description      = "Function that transitions hats from INVITATIONS_SENT to READY_TO_CLOSE"
   handler          = "GiftExchange.Library::GiftExchange.Library.Handlers.CooledOffSchedulerHandler::FunctionHandler"
   runtime          = "dotnet10"
   architectures    = ["arm64"]

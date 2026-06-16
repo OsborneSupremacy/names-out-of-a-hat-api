@@ -24,7 +24,7 @@ public static class HatStatus
     /// Until a gift exchange has cooled off, it cannot be closed.
     /// This protects the user from accidentally closing a gift exchange prematurely, revealing picked names.
     /// </summary>
-    public static string CooledOff => "COOLED_OFF";
+    public static string CooledOff => "READY_TO_CLOSE";
 
     /// <summary>
     /// The owner of the gift exchange indicated that the gift exchange has concluded. The names of picked recipients can be revealed, and no further changes can be made.

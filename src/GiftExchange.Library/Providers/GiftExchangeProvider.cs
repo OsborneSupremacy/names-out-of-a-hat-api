@@ -557,7 +557,7 @@ public class GiftExchangeProvider
         }
         catch (ConditionalCheckFailedException)
         {
-            _logger.LogError("Couldn't update HatStatus to to COOLED_OFF for hat {hatId}, since it does not have expected status. Will not retry.", hatId);
+            _logger.LogError("Couldn't update HatStatus to to READY_TO_CLOSE for hat {hatId}, since it does not have expected status. Will not retry.", hatId);
         }
     }
 }
