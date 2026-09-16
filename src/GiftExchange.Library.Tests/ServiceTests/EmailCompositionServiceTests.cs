@@ -124,7 +124,7 @@ public class EmailCompositionServiceTests
 
         // Most clients block remote images until asked, so the alt text is what the majority of
         // recipients actually read. It has to say the product name on its own.
-        body.Should().Contain("alt=\"\U0001F3A9 Names Out Of A Hat \U0001F3A9\"");
+        body.Should().Contain("alt=\"Names Out Of A Hat\"");
 
         // Outlook lays out from the attributes rather than the CSS, so dropping them collapses the
         // space the masthead should occupy.

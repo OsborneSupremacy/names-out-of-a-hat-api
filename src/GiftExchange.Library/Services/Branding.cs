@@ -64,12 +64,10 @@ internal static class Branding
     /// What stands in for the wordmark when the image does not arrive.
     /// </summary>
     /// <remarks>
-    /// Dressed rather than a bare product name, and that choice earns its keep mainly in email:
-    /// most mail clients block remote images until the reader asks for them, so for the majority
-    /// of recipients this text <em>is</em> the masthead. Written this way a blocked image degrades
-    /// to something that reads as a masthead, rather than to a broken-image placeholder. The Ask
+    /// This matters mainly in email: most mail clients block remote images until the reader asks
+    /// for them, so for the majority of recipients this text <em>is</em> the masthead. The Ask
     /// pages get the same string because they are the same product and there is no reason for the
     /// two to read differently.
     /// </remarks>
-    internal const string LogoAltText = "🎩 Names Out Of A Hat 🎩";
+    internal const string LogoAltText = "Names Out Of A Hat";
 }
