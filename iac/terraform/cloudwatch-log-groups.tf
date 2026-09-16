@@ -34,6 +34,7 @@ locals {
     (aws_lambda_function.inbound-gift-ideas-handler.function_name)        = "inbound gift ideas"
     (aws_lambda_function.cooled-off-scheduler-handler.function_name)      = "cool-off transition"
     (aws_lambda_function.undeliverable-invitations-handler.function_name) = "undeliverable invitations"
+    (aws_lambda_function.data-deletion-queue-handler.function_name)       = "data deletion"
   }
 }
 

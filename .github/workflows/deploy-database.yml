@@ -64,6 +64,7 @@ jobs:
           echo "SCHEDULER_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-cooled-off-scheduler-handler-lambda-role" >> "$GITHUB_ENV"
           echo "INBOUND_MAIL_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-inbound-gift-ideas-handler-lambda-role" >> "$GITHUB_ENV"
           echo "DELIVERY_EVENTS_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-delivery-events-handler-lambda-role" >> "$GITHUB_ENV"
+          echo "DATA_DELETION_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-data-deletion-handler-lambda-role" >> "$GITHUB_ENV"
 
       # Liquibase is a Java application. GitHub-hosted runners already have a JRE; a
       # self-hosted runner would need actions/setup-java before this step.
@@ -74,7 +75,7 @@ jobs:
           edition: 'oss'
 
       - name: Validate changelog
-        run: liquibase validate --changelog-file=db/changelog.yaml -Dapp_role_arn="$APP_ROLE_ARN" -Dscheduler_role_arn="$SCHEDULER_ROLE_ARN" -Dinbound_mail_role_arn="$INBOUND_MAIL_ROLE_ARN" -Ddelivery_events_role_arn="$DELIVERY_EVENTS_ROLE_ARN"
+        run: liquibase validate --changelog-file=db/changelog.yaml -Dapp_role_arn="$APP_ROLE_ARN" -Dscheduler_role_arn="$SCHEDULER_ROLE_ARN" -Dinbound_mail_role_arn="$INBOUND_MAIL_ROLE_ARN" -Ddelivery_events_role_arn="$DELIVERY_EVENTS_ROLE_ARN" -Ddata_deletion_role_arn="$DATA_DELETION_ROLE_ARN"
 
       - name: Apply changelog
-        run: liquibase update --changelog-file=db/changelog.yaml -Dapp_role_arn="$APP_ROLE_ARN" -Dscheduler_role_arn="$SCHEDULER_ROLE_ARN" -Dinbound_mail_role_arn="$INBOUND_MAIL_ROLE_ARN" -Ddelivery_events_role_arn="$DELIVERY_EVENTS_ROLE_ARN"
+        run: liquibase update --changelog-file=db/changelog.yaml -Dapp_role_arn="$APP_ROLE_ARN" -Dscheduler_role_arn="$SCHEDULER_ROLE_ARN" -Dinbound_mail_role_arn="$INBOUND_MAIL_ROLE_ARN" -Ddelivery_events_role_arn="$DELIVERY_EVENTS_ROLE_ARN" -Ddata_deletion_role_arn="$DATA_DELETION_ROLE_ARN"

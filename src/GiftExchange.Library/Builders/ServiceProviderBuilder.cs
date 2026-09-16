@@ -132,6 +132,7 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<IValidator<CloseHatRequest>, CloseHatRequestValidator>()
                 .AddSingleton<IValidator<CopyHatRequest>, CopyHatRequestValidator>()
                 .AddSingleton<IValidator<CreateHatRequest>, CreateHatRequestValidator>()
+                .AddSingleton<IValidator<DeleteMyDataRequest>, DeleteMyDataRequestValidator>()
                 .AddSingleton<IValidator<EditHatRequest>, EditHatRequestValidator>()
                 .AddSingleton<IValidator<EditParticipantRequest>, EditParticipantRequestValidator>()
                 .AddSingleton<IValidator<EditParticipantEmojiRequest>, EditParticipantEmojiRequestValidator>()
@@ -176,6 +177,10 @@ internal static class ServiceProviderBuilder
                 .AddKeyedSingleton<IApiGatewayHandler, EditHatService>("put/hat")
 
                 .AddKeyedSingleton<IApiGatewayHandler, UpdateProfileService>("put/profile")
+
+                // Accepts the request and queues the deleting, which has no upper bound on how long
+                // it takes. DataDeletionQueueHandlerService does the work.
+                .AddKeyedSingleton<IApiGatewayHandler, DeleteMyDataService>("delete/profile")
 
                 // Authenticated, because the footer that opens the contact form only renders on
                 // signed-in pages. That is what keeps this off the list of things needing a
@@ -227,6 +232,8 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<IReplyThrottleProvider, ReplyThrottleProvider>()
                 .AddSingleton<AutomaticEmailSender>()
                 .AddSingleton<IEmailQueue, EmailQueue>()
+                .AddSingleton<IDataDeletionQueue, DataDeletionQueue>()
+                .AddSingleton<DataDeletionQueueHandlerService>()
                 .AddSingleton<AskPageComposer>()
                 .AddSingleton<LeavePageComposer>()
                 .AddSingleton<LeaveEmailCompositionService>()

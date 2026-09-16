@@ -19,6 +19,9 @@ namespace GiftExchange.Library.Contexts;
 [JsonSerializable(typeof(CopyHatResponse))]
 [JsonSerializable(typeof(CreateHatRequest))]
 [JsonSerializable(typeof(CreateHatResponse))]
+// The body of a message on the data deletion queue, read by DataDeletionQueueHandlerService.
+[JsonSerializable(typeof(DataDeletionMessage))]
+[JsonSerializable(typeof(DeleteMyDataRequest))]
 [JsonSerializable(typeof(DeleteHatRequest))]
 [JsonSerializable(typeof(EditHatRequest))]
 [JsonSerializable(typeof(EditParticipantRequest))]

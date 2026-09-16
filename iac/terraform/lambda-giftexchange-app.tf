@@ -1,15 +1,15 @@
 resource "aws_lambda_function" "giftexchange_app" {
-  function_name    = "giftexchange"
-  description      = "Lambda function to handle API Gateway and other requests for the Gift Exchange application"
-  handler          = "GiftExchange.Library::GiftExchange.Library.Handlers.Router::FunctionHandler"
-  runtime          = "dotnet10"
-  architectures    = ["arm64"]
+  function_name = "giftexchange"
+  description   = "Lambda function to handle API Gateway and other requests for the Gift Exchange application"
+  handler       = "GiftExchange.Library::GiftExchange.Library.Handlers.Router::FunctionHandler"
+  runtime       = "dotnet10"
+  architectures = ["arm64"]
   # Lambda scales CPU with memory, so this is a CPU setting as much as a memory one. At 128 MB
   # a cold start has to build the EF model, open a DSQL connection and sign an IAM token on a
   # fraction of a core, which was exceeding API Gateway's 29 second integration ceiling. More
   # memory usually costs the same or less here, because the work finishes in far fewer
   # GB-seconds.
-  memory_size      = 1024
+  memory_size = 1024
 
   # Below API Gateway's 29 second integration ceiling, deliberately.
   #
@@ -44,6 +44,10 @@ resource "aws_lambda_function" "giftexchange_app" {
         UNDELIVERABLE_SCHEDULER_TARGET_ARN = aws_lambda_function.undeliverable-invitations-handler.arn
         UNDELIVERABLE_SCHEDULER_ROLE_ARN   = aws_iam_role.undeliverable-invitations-scheduler-execution-role.arn
         UNDELIVERABLE_SCHEDULER_GROUP_NAME = aws_scheduler_schedule_group.undeliverable-invitations.name
+
+        # Only the router queues data deletions; the function that carries them out reads the queue
+        # through its event source mapping and never needs the URL.
+        DATA_DELETION_QUEUE_URL = aws_sqs_queue.data-deletion-queue.url
       }
     )
   }
@@ -119,7 +123,8 @@ resource "aws_iam_role_policy" "giftexchange_app_sqs_policy" {
           "sqs:GetQueueUrl"
         ]
         Resource = [
-          aws_sqs_queue.invitations-queue.arn
+          aws_sqs_queue.invitations-queue.arn,
+          aws_sqs_queue.data-deletion-queue.arn
         ]
       }
     ]

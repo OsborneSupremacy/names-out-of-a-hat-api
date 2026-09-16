@@ -125,6 +125,13 @@ export interface UpdateProfileRequest {
   name: string
 }
 
+export interface DeleteMyDataRequest {
+  /** Also remove the caller's own name, where no exchange somebody else runs still shows it. */
+  forgetMe: boolean
+  /** Never let anybody add the caller's address to a gift exchange again. */
+  doNotAddAnywhere: boolean
+}
+
 /** The categories the contact form offers. Mirrors FeedbackCategories.All on the server. */
 export type FeedbackCategory = 'QUESTION' | 'FEATURE_REQUEST' | 'OTHER_FEEDBACK'
 
@@ -625,6 +632,27 @@ export async function updateProfile(request: UpdateProfileRequest): Promise<void
 
   if (!response.ok) {
     await handleApiError(response, 'Failed to update your name')
+  }
+}
+
+/**
+ * Asks for everything the caller has organized to be deleted.
+ *
+ * The server answers 202 once the request is accepted, not once the deleting is done: that happens
+ * on a queue, and can take a minute for somebody with many exchanges. A list fetched straight
+ * afterwards may still include some of them.
+ */
+export async function deleteMyData(request: DeleteMyDataRequest): Promise<void> {
+  const headers = await getAuthHeaders()
+
+  const response = await fetch(`${apiConfig.endpoint}/profile`, {
+    method: 'DELETE',
+    headers,
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    await handleApiError(response, 'Failed to delete your data')
   }
 }
 

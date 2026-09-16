@@ -147,6 +147,7 @@ resource "aws_cloudwatch_metric_alarm" "dlq_not_empty" {
   for_each = {
     (aws_sqs_queue.delivery-events-dlq.name) = "SES delivery event"
     (aws_sqs_queue.invitations-dlq.name)     = "invitation"
+    (aws_sqs_queue.data-deletion-dlq.name)   = "data deletion"
   }
 
   alarm_name        = "giftexchange-${each.key}-not-empty"

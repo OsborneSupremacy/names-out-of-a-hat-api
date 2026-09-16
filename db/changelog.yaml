@@ -1130,3 +1130,18 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: UPDATE person SET added_by_person_id = NULL
+
+  - changeSet:
+      id: giftexchange_user--0013
+      author: ben
+      comment: >
+        Lets the data deletion function connect as giftexchange_user. The counterpart of --0011, for
+        the function that carries out a queued request to delete somebody's data.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0013.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: AWS IAM REVOKE giftexchange_user FROM '${data_deletion_role_arn}'

@@ -85,4 +85,34 @@ describe('Home', () => {
     expect(screen.getByText('In Progress')).toBeInTheDocument()
     expect(screen.queryByText(/ago$/)).not.toBeInTheDocument()
   })
+
+  /**
+   * Deleting happens on a queue, so the list fetched on arrival can still hold exchanges that are
+   * about to go. Showing them, or offering to create one as if the list were empty by accident,
+   * would both contradict what the person was just told.
+   */
+  it('hides the list and says deletion is under way when arriving from a deletion', async () => {
+    getHats.mockResolvedValue({
+      organizerName: 'Ben',
+      hats: [
+        {
+          hatId: '11111111-1111-1111-1111-111111111111',
+          hatName: 'Family Christmas',
+          status: 'IN_PROGRESS',
+          statusUpdatedAt: hoursAgo(3)
+        }
+      ]
+    })
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/', state: { dataDeletionRequested: true } }]}>
+        <Home userEmail="organizer@example.com" onSignOut={vi.fn()} />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Hello Ben!')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/being deleted/)
+    expect(screen.queryByText('Family Christmas')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Create New Gift Exchange' })).not.toBeInTheDocument()
+  })
 })

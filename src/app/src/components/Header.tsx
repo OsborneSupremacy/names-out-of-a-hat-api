@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { updateProfile } from '../api'
+import { updateProfile, deleteMyData, DeleteMyDataRequest } from '../api'
 import { EditNameModal } from './EditNameModal'
+import { DeleteMyDataModal } from './DeleteMyDataModal'
 import './Header.css'
 
 interface HeaderProps {
@@ -15,16 +16,34 @@ interface HeaderProps {
   givenName: string | null
   onSignOut: () => void
   onNameUpdated: (name: string) => void
+  /**
+   * Called when the user asked for their data to be deleted but not to be forgotten, so they stay
+   * signed in. The page decides what that means for what it is showing.
+   */
+  onDataDeleted: () => void
 }
 
-export function Header({ userEmail, givenName, onSignOut, onNameUpdated }: HeaderProps) {
+export function Header({ userEmail, givenName, onSignOut, onNameUpdated, onDataDeleted }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [showEditName, setShowEditName] = useState(false)
+  const [showDeleteMyData, setShowDeleteMyData] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const handleNameSubmit = async (name: string) => {
     await updateProfile({ name })
     onNameUpdated(name)
+  }
+
+  // Somebody who asked to be forgotten has no name left to be signed in as, so they are signed out
+  // rather than left looking at a page that still greets them.
+  const handleDeleteMyData = async (request: DeleteMyDataRequest) => {
+    await deleteMyData(request)
+
+    if (request.forgetMe) {
+      onSignOut()
+    } else {
+      onDataDeleted()
+    }
   }
 
   useEffect(() => {
@@ -102,6 +121,15 @@ export function Header({ userEmail, givenName, onSignOut, onNameUpdated }: Heade
                 className="profile-menu-item"
                 onClick={() => {
                   setIsMenuOpen(false)
+                  setShowDeleteMyData(true)
+                }}
+              >
+                Delete My Data
+              </button>
+              <button
+                className="profile-menu-item"
+                onClick={() => {
+                  setIsMenuOpen(false)
                   onSignOut()
                 }}
               >
@@ -117,6 +145,13 @@ export function Header({ userEmail, givenName, onSignOut, onNameUpdated }: Heade
           currentName={givenName ?? ''}
           onClose={() => setShowEditName(false)}
           onSubmit={handleNameSubmit}
+        />
+      )}
+
+      {showDeleteMyData && (
+        <DeleteMyDataModal
+          onClose={() => setShowDeleteMyData(false)}
+          onSubmit={handleDeleteMyData}
         />
       )}
     </header>

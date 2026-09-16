@@ -556,7 +556,8 @@ public class GiftExchangeProvider
     /// order is explicit, and the whole thing runs in one transaction.
     ///
     /// People are left alone. They exist independently of any one exchange, and the participants
-    /// being removed here may well be in somebody else's hat.
+    /// being removed here may well be in somebody else's hat. <see cref="DeleteMyDataAsync"/> is
+    /// the delete that also removes the people nothing refers to any more.
     ///
     /// Does nothing unless the hat belongs to the organizer asking.
     /// </summary>
@@ -581,85 +582,194 @@ public class GiftExchangeProvider
             if (!ownsHat)
                 return;
 
-            var participantIds = context.Participants
-                .Where(participant => participant.HatId == request.HatId)
-                .Select(participant => participant.ParticipantId);
+            await DeleteHatCoreAsync(context, request.HatId).ConfigureAwait(false);
+        });
 
-            await context.ParticipantEligibleRecipients
-                .Where(row => participantIds.Contains(row.ParticipantId)
-                              || participantIds.Contains(row.EligibleParticipantId))
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
+    /// <summary>
+    /// Everything <see cref="DeleteHatAsync"/> removes, without the ownership check. Callers must
+    /// have established that the hat is the caller's to delete before reaching this.
+    /// </summary>
+    private static async Task DeleteHatCoreAsync(GiftExchangeDbContext context, Guid hatId)
+    {
+        var participantIds = context.Participants
+            .Where(participant => participant.HatId == hatId)
+            .Select(participant => participant.ParticipantId);
 
-            // Gift ideas and the tokens that route them go with the exchange they were written for.
-            // Nothing cleans these up on our behalf: they are mapped without navigations precisely
-            // so that no foreign key exists, so the sweep is ours to do.
-            await context.GiftIdeas
-                .Where(giftIdea => participantIds.Contains(giftIdea.ParticipantId))
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
+        await context.ParticipantEligibleRecipients
+            .Where(row => participantIds.Contains(row.ParticipantId)
+                          || participantIds.Contains(row.EligibleParticipantId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
 
-            await context.GiftIdeaTokens
-                .Where(token => participantIds.Contains(token.ParticipantId))
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
+        // Gift ideas and the tokens that route them go with the exchange they were written for.
+        // Nothing cleans these up on our behalf: they are mapped without navigations precisely
+        // so that no foreign key exists, so the sweep is ours to do.
+        await context.GiftIdeas
+            .Where(giftIdea => participantIds.Contains(giftIdea.ParticipantId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
 
-            await context.ParticipantLeaveTokens
-                .Where(token => participantIds.Contains(token.ParticipantId))
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
+        await context.GiftIdeaTokens
+            .Where(token => participantIds.Contains(token.ParticipantId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
 
-            // What SES said about the mail sent to these participants. It is a record about an
-            // exchange that is being removed, and no longer answers any question once the addresses
-            // it describes are gone.
-            await context.ParticipantEmailDeliveries
-                .Where(delivery => participantIds.Contains(delivery.ParticipantId))
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
+        await context.ParticipantLeaveTokens
+            .Where(token => participantIds.Contains(token.ParticipantId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
 
-            // Asks, and the suggestions written in reply to them. Filtering on the asker alone is
-            // enough here: all three participants named by an ask belong to the hat that is going,
-            // so nothing is left behind by only looking at one of them.
-            //
-            // The ids are read out before either delete rather than left as a subquery. The
-            // contributions have to be found through the asks, and once the asks are gone there is
-            // nothing left to find them by.
-            var askIds = await context.GiftIdeaAsks
+        // What SES said about the mail sent to these participants. It is a record about an
+        // exchange that is being removed, and no longer answers any question once the addresses
+        // it describes are gone.
+        await context.ParticipantEmailDeliveries
+            .Where(delivery => participantIds.Contains(delivery.ParticipantId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+
+        // Asks, and the suggestions written in reply to them. Filtering on the asker alone is
+        // enough here: all three participants named by an ask belong to the hat that is going,
+        // so nothing is left behind by only looking at one of them.
+        //
+        // The ids are read out before either delete rather than left as a subquery. The
+        // contributions have to be found through the asks, and once the asks are gone there is
+        // nothing left to find them by.
+        var askIds = await context.GiftIdeaAsks
+            .AsNoTracking()
+            .Where(ask => participantIds.Contains(ask.AskerParticipantId))
+            .Select(ask => ask.GiftIdeaAskId)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        await context.ContributedGiftIdeas
+            .Where(contribution => askIds.Contains(contribution.GiftIdeaAskId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+
+        await context.GiftIdeaAsks
+            .Where(ask => askIds.Contains(ask.GiftIdeaAskId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+
+        await context.Participants
+            .Where(participant => participant.HatId == hatId)
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+
+        // Refusals of an exchange that no longer exists. They cannot stop anybody being added to
+        // it, and they are the addresses of the people who were in it, which is exactly what a
+        // delete promises to take away.
+        await context.DoNotAddToExchange
+            .Where(block => block.HatId == hatId)
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+
+        // Any copy taken from this hat would otherwise point at an exchange that no longer
+        // exists. Clearing it says "not a copy", which is true once the source is gone, and is
+        // the same cleanup DeleteParticipantAsync does for a pick. Only this organizer's hats
+        // can be affected: CopyHatAsync will not copy a hat you do not own.
+        await context.Hats
+            .Where(hat => hat.CopiedFromHatId == hatId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(hat => hat.CopiedFromHatId, Guid.Empty))
+            .ConfigureAwait(false);
+
+        await context.Hats
+            .Where(hat => hat.HatId == hatId)
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Deletes every exchange somebody organizes, the people who were only ever in those exchanges,
+    /// and, when asked, the person themselves.
+    /// </summary>
+    /// <remarks>
+    /// One transaction per exchange rather than one for the lot. DSQL caps the rows a single
+    /// transaction may modify, and an organizer of many years could pass it on their own. Each
+    /// exchange goes whole or not at all, and a retry of the message simply finds fewer of them.
+    ///
+    /// The people an exchange leaves orphaned are removed inside that exchange's transaction, not
+    /// collected and swept at the end. A sweep at the end would be lost to a failure partway: the
+    /// retry could no longer see which people the exchanges already gone had held.
+    ///
+    /// Only exchanges created by <see cref="DataDeletionMessage.RequestedAt"/>. The message waits on
+    /// a queue, and an exchange somebody starts in that time is not one they asked to delete.
+    ///
+    /// A person is only ever removed when nothing points at them. Somebody in an exchange another
+    /// organizer runs is still shown there by name, and removing the row would take them out of
+    /// that list without anybody deciding to.
+    /// </remarks>
+    internal async Task DeleteMyDataAsync(DataDeletionMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.Email))
+            return;
+
+        Guid personId;
+        List<Guid> hatIds;
+
+        await using (var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false))
+        {
+            personId = await FindPersonIdByEmailAsync(context, message.Email).ConfigureAwait(false);
+
+            if (personId == Guid.Empty)
+                return;
+
+            hatIds = await context.Hats
                 .AsNoTracking()
-                .Where(ask => participantIds.Contains(ask.AskerParticipantId))
-                .Select(ask => ask.GiftIdeaAskId)
+                .Where(hat => hat.OrganizerPersonId == personId && hat.CreatedAt <= message.RequestedAt)
+                .Select(hat => hat.HatId)
                 .ToListAsync()
                 .ConfigureAwait(false);
+        }
 
-            await context.ContributedGiftIdeas
-                .Where(contribution => askIds.Contains(contribution.GiftIdeaAskId))
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
+        foreach (var hatId in hatIds)
+            await InTransactionAsync(async context =>
+            {
+                // Read before the exchange goes, because afterwards nothing says who was in it.
+                var personIds = await context.Participants
+                    .AsNoTracking()
+                    .Where(participant => participant.HatId == hatId)
+                    .Select(participant => participant.PersonId)
+                    .Distinct()
+                    .ToListAsync()
+                    .ConfigureAwait(false);
 
-            await context.GiftIdeaAsks
-                .Where(ask => askIds.Contains(ask.GiftIdeaAskId))
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
+                await DeleteHatCoreAsync(context, hatId).ConfigureAwait(false);
 
-            await context.Participants
-                .Where(participant => participant.HatId == request.HatId)
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
+                // The caller is left to the ForgetMe step below, which is the only place they are
+                // theirs to remove.
+                await DeleteUnreferencedPersonsAsync(
+                        context,
+                        [.. personIds.Where(id => id != personId)])
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(false);
 
-            // Any copy taken from this hat would otherwise point at an exchange that no longer
-            // exists. Clearing it says "not a copy", which is true once the source is gone, and is
-            // the same cleanup DeleteParticipantAsync does for a pick. Only this organizer's hats
-            // can be affected: CopyHatAsync will not copy a hat you do not own.
-            await context.Hats
-                .Where(hat => hat.CopiedFromHatId == request.HatId)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(hat => hat.CopiedFromHatId, Guid.Empty))
+        if (message.ForgetMe)
+            await InTransactionAsync(context => DeleteUnreferencedPersonsAsync(context, [personId]))
                 .ConfigureAwait(false);
+    }
 
-            await context.Hats
-                .Where(hat => hat.HatId == request.HatId && hat.OrganizerPersonId == organizerPersonId)
-                .ExecuteDeleteAsync()
-                .ConfigureAwait(false);
-        });
+    /// <summary>
+    /// Removes those of these people that no exchange refers to, as organizer or as participant.
+    /// </summary>
+    /// <remarks>
+    /// The sentinel is never among them, whatever is passed: every column meaning "nobody" points
+    /// at it, and it holds nothing to delete.
+    /// </remarks>
+    private static async Task DeleteUnreferencedPersonsAsync(GiftExchangeDbContext context, List<Guid> personIds)
+    {
+        personIds.Remove(Guid.Empty);
+
+        if (personIds.Count == 0)
+            return;
+
+        await context.Persons
+            .Where(person => personIds.Contains(person.PersonId)
+                             && !context.Participants.Any(participant => participant.PersonId == person.PersonId)
+                             && !context.Hats.Any(hat => hat.OrganizerPersonId == person.PersonId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Issues a gift ideas routing token to every participant in a hat, storing only the hash of

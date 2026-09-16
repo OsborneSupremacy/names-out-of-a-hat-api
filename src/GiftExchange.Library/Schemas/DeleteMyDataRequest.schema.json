@@ -1,0 +1,26 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "organizerEmail": {
+            "type": "string",
+            "format": "email",
+            "minLength": 5,
+            "maxLength": 254,
+            "description": "Ignored if sent. The authorizer supplies the caller's address."
+        },
+        "forgetMe": {
+            "type": "boolean",
+            "description": "Also delete the caller's own name, where no other gift exchange still refers to them"
+        },
+        "doNotAddAnywhere": {
+            "type": "boolean",
+            "description": "Never let anybody add the caller's address to a gift exchange again"
+        }
+    },
+    "required": [
+        "forgetMe",
+        "doNotAddAnywhere"
+    ]
+}

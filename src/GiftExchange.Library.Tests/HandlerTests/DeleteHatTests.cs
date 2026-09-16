@@ -1,4 +1,6 @@
-﻿namespace GiftExchange.Library.Tests.HandlerTests;
+﻿using GiftExchange.Library.Contexts;
+
+namespace GiftExchange.Library.Tests.HandlerTests;
 
 [Collection(PostgresCollection.Name)]
 public class DeleteHatTests
@@ -15,6 +17,8 @@ public class DeleteHatTests
 
     private readonly GiftExchangeProvider _giftExchangeProvider;
 
+    private readonly IDbContextFactory<GiftExchangeDbContext> _contextFactory;
+
     public DeleteHatTests(PostgresFixture dbFixture)
     {
         DotEnv.Load();
@@ -22,6 +26,7 @@ public class DeleteHatTests
         _participantFaker = new AddParticipantRequestFaker();
 
         var contextFactory = dbFixture.CreateContextFactory();
+        _contextFactory = contextFactory;
         _context = new FakeLambdaContext();
 
         var serviceProvider = new ServiceCollection()
@@ -69,5 +74,32 @@ public class DeleteHatTests
 
         var (exists, _) = await _giftExchangeProvider.GetHatAsync(hat.Organizer.Email, hat.Id);
         exists.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DeleteHat_RemovesRefusalsOfTheDeletedExchange()
+    {
+        // arrange
+        var hat = await _testDataService.CreateTestHatAsync();
+
+        await _giftExchangeProvider.RecordDoNotAddAsync(new RecordDoNotAddRequest
+        {
+            Email = "left.this.one@example.com",
+            HatId = hat.Id,
+            OrganizerEmail = hat.Organizer.Email,
+            BlockOrganizer = false,
+            BlockAnywhere = false
+        });
+
+        var apiRequest = _jsonService
+            .SerializeDefault(new DeleteHatRequest { OrganizerEmail = hat.Organizer.Email, HatId = hat.Id })
+            .ToApiGatewayProxyRequest();
+
+        // act
+        await _sut.FunctionHandler(apiRequest, _context);
+
+        // assert
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        (await context.DoNotAddToExchange.CountAsync(block => block.HatId == hat.Id)).Should().Be(0);
     }
 }

@@ -728,6 +728,8 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
         givenName={hat ? hat.organizer.name : null}
         onSignOut={onSignOut}
         onNameUpdated={handleNameUpdated}
+        // The exchange on this page is one of the ones being deleted.
+        onDataDeleted={() => navigate('/', { state: { dataDeletionRequested: true } })}
       />
 
       <main className="main-content">

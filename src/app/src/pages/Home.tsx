@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { getHats, createHat, HatMetadata } from '../api'
 import { formatHatStatus } from '../hatStatus'
@@ -14,6 +14,7 @@ interface HomeProps {
 
 export function Home({ userEmail, onSignOut }: HomeProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [hats, setHats] = useState<HatMetadata[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>('')
@@ -23,13 +24,32 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
   // An organizer with nothing to look at is here to create something, so the dialog opens for them.
   // Guarded so that dismissing it leaves them on the empty state rather than reopening it.
   const openedCreateForEmptyList = useRef(false)
+  // Set once somebody has asked for their data to be deleted, here or on the page they came from.
+  // The deleting happens on a queue, so a list fetched now can still hold exchanges that are about
+  // to go; they are hidden rather than shown and then taken away.
+  const [dataDeletionRequested, setDataDeletionRequested] = useState(
+    () => (location.state as { dataDeletionRequested?: boolean } | null)?.dataDeletionRequested === true
+  )
+  const hideHats = useRef(dataDeletionRequested)
+
+  // Read once, above, and then removed from the history entry, so a refresh a day later does not
+  // announce a deletion that finished long ago.
+  useEffect(() => {
+    if ((location.state as { dataDeletionRequested?: boolean } | null)?.dataDeletionRequested) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
     async function loadHats() {
       try {
         const response = await getHats(userEmail)
-        setHats(response.hats)
         setOrganizerName(response.organizerName)
+
+        // Nor is the create dialog opened for somebody who has just emptied the list on purpose.
+        if (hideHats.current) return
+
+        setHats(response.hats)
 
         if (response.hats.length === 0 && !openedCreateForEmptyList.current) {
           openedCreateForEmptyList.current = true
@@ -64,6 +84,12 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
     navigate(`/gift-exchange/${hatId}`)
   }
 
+  const handleDataDeleted = () => {
+    hideHats.current = true
+    setHats([])
+    setDataDeletionRequested(true)
+  }
+
   const handleHatClick = (hatId: string) => {
     navigate(`/gift-exchange/${hatId}`)
   }
@@ -75,6 +101,7 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
         givenName={organizerName}
         onSignOut={onSignOut}
         onNameUpdated={setOrganizerName}
+        onDataDeleted={handleDataDeleted}
       />
 
       <main className="main-content">
@@ -83,6 +110,20 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
               page when it resolves. */}
           <h2>{organizerName === null ? '\u00A0' : `Hello ${organizerName || 'there'}!`}</h2>
           <p>Welcome to Names Out of a Hat!</p>
+
+          {dataDeletionRequested && (
+            <div className="home-notice" role="status">
+              <span>Your gift exchanges are being deleted. This can take a minute.</span>
+              <button
+                type="button"
+                className="home-notice-dismiss"
+                onClick={() => setDataDeletionRequested(false)}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <p>Loading your gift exchanges...</p>
