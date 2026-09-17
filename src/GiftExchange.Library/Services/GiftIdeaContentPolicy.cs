@@ -21,13 +21,23 @@ namespace GiftExchange.Library.Services;
 internal partial class GiftIdeaContentPolicy
 {
     /// <summary>
-    /// The largest submission accepted, in UTF-8 bytes rather than characters.
-    ///
-    /// Bytes because that is what the moderation limit is measured in downstream, and because a
-    /// gift exchange is a place people reach for emoji, which cost four bytes each. A cap counted
-    /// in characters would pass text that moderation then refused to look at.
+    /// The longest submission accepted, in UTF-16 code units, which is what both
+    /// <see cref="string.Length"/> and a textarea's <c>maxlength</c> count.
     /// </summary>
-    public const int MaxBodyBytes = 8000;
+    /// <remarks>
+    /// Set by the web application firewall in front of the API rather than by anything here. The
+    /// CloudFront-managed web ACL includes the AWS common rule set, whose SizeRestrictions_BODY rule
+    /// blocks any request body over 8 KB with a bare CloudFront 403 before this application sees it.
+    ///
+    /// The share form posts as multipart/form-data so that text travels as raw UTF-8 rather than
+    /// percent-encoded, where one character can cost twelve bytes. Raw, one code unit costs at most
+    /// three bytes, so 2,000 of them is at most 6 KB, leaving room for the multipart framing. That
+    /// holds for emoji and for any script, not just for English.
+    ///
+    /// It is also plenty. Two thousand characters is a long list of gift ideas, and anybody pasting
+    /// more is pasting something that is not one.
+    /// </remarks>
+    public const int MaxLength = 2000;
 
     /// <summary>More links than any list of gift ideas has a reason to carry.</summary>
     public const int MaxLinks = 10;
@@ -70,7 +80,7 @@ internal partial class GiftIdeaContentPolicy
         if (string.IsNullOrWhiteSpace(body))
             return GiftIdeaSubmissionOutcome.RejectedNothingToShare;
 
-        if (Encoding.UTF8.GetByteCount(body) > MaxBodyBytes)
+        if (body.Length > MaxLength)
             return GiftIdeaSubmissionOutcome.RejectedTooLong;
 
         // Before anything else about content: this one is not about what the sender did wrong, it

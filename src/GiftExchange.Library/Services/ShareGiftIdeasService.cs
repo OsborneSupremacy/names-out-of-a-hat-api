@@ -1,4 +1,5 @@
 using System.Web;
+using MimeKit;
 
 namespace GiftExchange.Library.Services;
 
@@ -218,30 +219,89 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     /// The text from the form, trimmed and with line endings made consistent.
     /// </summary>
     /// <remarks>
+    /// The form posts multipart/form-data, for the size reason
+    /// <see cref="GiftIdeaContentPolicy.MaxLength"/> gives. A URL-encoded body is read too, since it
+    /// is what a form without an enctype sends and there is no reason to refuse one.
+    ///
     /// Browsers post a textarea's line breaks as CRLF. Stored as LF, so the forward and the echo
     /// break lines the same way whatever sent them. An unreadable body is treated as an empty one,
     /// which the content policy then reports as "write something".
     /// </remarks>
     private static string ParseIdeas(APIGatewayProxyRequest request)
     {
-        var body = request.Body ?? string.Empty;
+        byte[] body;
 
-        if (request.IsBase64Encoded && body.Length > 0)
+        try
         {
-            try
-            {
-                body = Encoding.UTF8.GetString(Convert.FromBase64String(body));
-            }
-            catch (FormatException)
-            {
-                return string.Empty;
-            }
+            body = request.IsBase64Encoded
+                ? Convert.FromBase64String(request.Body ?? string.Empty)
+                : Encoding.UTF8.GetBytes(request.Body ?? string.Empty);
+        }
+        catch (FormatException)
+        {
+            return string.Empty;
         }
 
-        var ideas = HttpUtility.ParseQueryString(body).Get(ShareIdeasPageComposer.IdeasField) ?? string.Empty;
+        var contentType = FindHeader(request, "Content-Type");
+
+        var ideas = contentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase)
+            ? ReadMultipartField(body, contentType)
+            : HttpUtility.ParseQueryString(Encoding.UTF8.GetString(body)).Get(ShareIdeasPageComposer.IdeasField)
+              ?? string.Empty;
 
         return ideas.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
     }
+
+    /// <summary>
+    /// The ideas field out of a multipart/form-data body, or the empty string.
+    /// </summary>
+    /// <remarks>
+    /// MimeKit is already here for sending mail, and a form post is a MIME multipart with a
+    /// Content-Disposition on each part. The request's Content-Type header carries the boundary,
+    /// so it is put back in front of the body to make a complete entity to parse.
+    ///
+    /// Decoded as UTF-8 explicitly. Browsers send form fields in the page's encoding and name no
+    /// charset on the part, and the page declares UTF-8.
+    /// </remarks>
+    private static string ReadMultipartField(byte[] body, string contentType)
+    {
+        try
+        {
+            using var stream = new MemoryStream();
+            stream.Write(Encoding.ASCII.GetBytes($"Content-Type: {contentType}\r\n\r\n"));
+            stream.Write(body);
+            stream.Position = 0;
+
+            if (MimeEntity.Load(stream) is not Multipart multipart)
+                return string.Empty;
+
+            var field = multipart
+                .OfType<TextPart>()
+                .FirstOrDefault(part =>
+                    part.ContentDisposition is not null
+                    && part.ContentDisposition.Parameters.TryGetValue("name", out string? name)
+                    && name == ShareIdeasPageComposer.IdeasField);
+
+            return field?.GetText(Encoding.UTF8) ?? string.Empty;
+        }
+        catch (Exception exception) when (exception is FormatException or ParseException)
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// A request header by name, ignoring case, or the empty string.
+    /// </summary>
+    /// <remarks>
+    /// Case-insensitive because API Gateway passes header names through as the client sent them,
+    /// and HTTP/2 clients send them lower-cased.
+    /// </remarks>
+    private static string FindHeader(APIGatewayProxyRequest request, string name) =>
+        request.Headers?
+            .FirstOrDefault(header => header.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
+            .Value
+        ?? string.Empty;
 
     /// <summary>
     /// Every outcome is a 200 carrying a page, for the reason <see cref="AskForGiftIdeasService"/>

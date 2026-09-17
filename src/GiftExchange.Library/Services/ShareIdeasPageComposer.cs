@@ -62,17 +62,17 @@ public class ShareIdeasPageComposer
 
         body.Append(
             $"""
-             <form method="post" action="{HttpUtility.HtmlAttributeEncode(action)}">
-               <textarea name="{IdeasField}" rows="10" maxlength="{GiftIdeaContentPolicy.MaxBodyBytes}" style="box-sizing:border-box;width:100%;padding:12px;border:1px solid #cccccc;border-radius:4px;font:inherit;">{HttpUtility.HtmlEncode(request.Ideas)}</textarea>
+             <form method="post" enctype="multipart/form-data" action="{HttpUtility.HtmlAttributeEncode(action)}">
+               <textarea name="{IdeasField}" rows="10" maxlength="{GiftIdeaContentPolicy.MaxLength}" style="box-sizing:border-box;width:100%;padding:12px;border:1px solid #cccccc;border-radius:4px;font:inherit;">{HttpUtility.HtmlEncode(request.Ideas)}</textarea>
                <p style="margin:20px 0 0;">
                  <button type="submit" style="background-color:#1f7a4d;color:#ffffff;padding:12px 22px;border:0;border-radius:4px;font-weight:bold;font-size:16px;cursor:pointer;">
                    Share
                  </button>
                </p>
              </form>
-             <p style="color:#666666;font-size:14px;">Links are welcome &mdash; paste the full web
-             address rather than a shortened one. Please don't mention the name of the person you
-             drew.</p>
+             <p style="color:#666666;font-size:14px;">Up to {GiftIdeaContentPolicy.MaxLength:N0} characters.
+             Links are welcome &mdash; paste the full web address rather than a shortened one. Please
+             don't mention the name of the person you drew.</p>
              """);
 
         return Page(
@@ -140,7 +140,7 @@ public class ShareIdeasPageComposer
                 "Write your ideas in the box, then press Share.",
 
             GiftIdeaSubmissionOutcome.RejectedTooLong =>
-                $"That's longer than we can handle. Please shorten it to under about {GiftIdeaContentPolicy.MaxBodyBytes / 1000},000 characters.",
+                $"That's longer than we can pass on. Please shorten it to {GiftIdeaContentPolicy.MaxLength:N0} characters or fewer.",
 
             // Said carefully. The likeliest cause is text pasted from the invitation, which is an
             // easy mistake and not a suspicious one.

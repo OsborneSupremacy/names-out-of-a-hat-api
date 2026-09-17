@@ -113,23 +113,38 @@ public class GiftIdeaContentPolicyTests
     }
 
     [Fact]
-    public void Check_MeasuresLengthInBytesRatherThanCharacters()
+    public void Check_AcceptsTextExactlyAtTheLimit()
     {
-        // arrange: emoji cost four UTF-8 bytes each, and a gift exchange is exactly where people
-        // reach for them. A character count would pass text that moderation then refuses to look
-        // at, since its own limit is measured in bytes.
-        var body = string.Concat(Enumerable.Repeat("🎁", GiftIdeaContentPolicy.MaxBodyBytes / 4 + 1));
-
-        // assert on the arrangement itself: comfortably under the cap by characters, over it by
-        // bytes, which is the case that matters.
-        body.Length.Should().BeLessThan(GiftIdeaContentPolicy.MaxBodyBytes);
-        Encoding.UTF8.GetByteCount(body).Should().BeGreaterThan(GiftIdeaContentPolicy.MaxBodyBytes);
-
         // act
-        var outcome = _sut.Check(body, "Charlie");
+        var outcome = _sut.Check(new string('a', GiftIdeaContentPolicy.MaxLength), "Charlie");
+
+        // assert
+        outcome.Should().Be(GiftIdeaSubmissionOutcome.Shared);
+    }
+
+    [Fact]
+    public void Check_RefusesTextOverTheLimit()
+    {
+        // act
+        var outcome = _sut.Check(new string('a', GiftIdeaContentPolicy.MaxLength + 1), "Charlie");
 
         // assert
         outcome.Should().Be(GiftIdeaSubmissionOutcome.RejectedTooLong);
+    }
+
+    [Theory]
+    [InlineData("a")]
+    [InlineData("é")]
+    [InlineData("漢")]
+    [InlineData("🎁")]
+    public void MaxLength_KeepsAFullSubmissionUnderTheFirewallsBodyLimit(string unit)
+    {
+        // arrange: as much of this character as the textarea will take. The web ACL in front of the
+        // API blocks any body over 8 KB, and the form posts multipart, so the text travels raw.
+        var ideas = string.Concat(Enumerable.Repeat(unit, GiftIdeaContentPolicy.MaxLength / unit.Length));
+
+        // assert: with half a kilobyte to spare for the multipart boundaries and part headers.
+        Encoding.UTF8.GetByteCount(ideas).Should().BeLessThanOrEqualTo(8 * 1024 - 512);
     }
 
     [Fact]

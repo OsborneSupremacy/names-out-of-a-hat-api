@@ -96,7 +96,7 @@ public class ShareGiftIdeasServiceTests
         // this page, and nothing is stored or forwarded on anybody's behalf.
         response.StatusCode.Should().Be(200);
         response.Headers["Content-Type"].Should().StartWith("text/html");
-        response.Body.Should().Contain("<form method=\"post\"");
+        response.Body.Should().Contain("<form method=\"post\" enctype=\"multipart/form-data\"");
         response.Body.Should().Contain($"action=\"https://api.namesoutofahat.com/ideas/{exchange.Token}\"");
 
         _sent.Should().BeEmpty();
@@ -267,7 +267,7 @@ public class ShareGiftIdeasServiceTests
 
         // assert
         response.Body.Should().Contain(explanation);
-        response.Body.Should().Contain("<form method=\"post\"");
+        response.Body.Should().Contain("<form method=\"post\" enctype=\"multipart/form-data\"");
 
         _sent.Should().BeEmpty();
         await ShouldHaveStoredNothing(exchange);
@@ -313,6 +313,63 @@ public class ShareGiftIdeasServiceTests
 
         // assert: browsers post a textarea's breaks as CRLF.
         (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Should().Be("A scarf\nA hat");
+    }
+
+    [Fact]
+    public async Task Post_GivenAUrlEncodedBody_ReadsItTheSame()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        await _sut.FunctionHandler(PostUrlEncoded(exchange.Token, "A scarf & a hat."), new FakeLambdaContext());
+
+        // assert
+        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Should().Be("A scarf & a hat.");
+    }
+
+    [Fact]
+    public async Task Post_ReadsNonAsciiTextAsUtf8()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        await _sut.FunctionHandler(Post(exchange.Token, "Crème brûlée torch 🎁 漢字"), new FakeLambdaContext());
+
+        // assert: a multipart part names no charset, and the page declares UTF-8.
+        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Should().Be("Crème brûlée torch 🎁 漢字");
+    }
+
+    [Fact]
+    public async Task Post_GivenTextOverTheLimit_SaysHowLongItMayBeAndKeepsIt()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        var ideas = new string('a', GiftIdeaContentPolicy.MaxLength + 1);
+
+        // act
+        var response = await _sut.FunctionHandler(Post(exchange.Token, ideas), new FakeLambdaContext());
+
+        // assert
+        response.Body.Should().Contain("2,000 characters or fewer");
+        response.Body.Should().Contain($">{ideas}</textarea>");
+        _sent.Should().BeEmpty();
+        await ShouldHaveStoredNothing(exchange);
+    }
+
+    [Fact]
+    public async Task Get_CapsTheBoxAtTheLimitAndPostsMultipart()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        var response = await _sut.FunctionHandler(Get(exchange.Token), new FakeLambdaContext());
+
+        // assert: both halves of staying under the firewall's 8 KB body limit.
+        response.Body.Should().Contain($"maxlength=\"{GiftIdeaContentPolicy.MaxLength}\"");
+        response.Body.Should().Contain("enctype=\"multipart/form-data\"");
     }
 
     [Fact]
@@ -488,12 +545,32 @@ public class ShareGiftIdeasServiceTests
             PathParameters = new Dictionary<string, string> { ["token"] = token }
         };
 
-    private static APIGatewayProxyRequest Post(string token, string ideas) =>
+    /// <summary>What a browser submitting the share form sends: multipart, as the form declares.</summary>
+    private static APIGatewayProxyRequest Post(string token, string ideas)
+    {
+        const string boundary = "----WebKitFormBoundaryx7Qp2ZcJ4mTn9aLk";
+
+        return new APIGatewayProxyRequest
+        {
+            HttpMethod = "POST",
+            Resource = "/ideas/{token}",
+            PathParameters = new Dictionary<string, string> { ["token"] = token },
+            // Lower-cased, as HTTP/2 clients send it.
+            Headers = new Dictionary<string, string> { ["content-type"] = $"multipart/form-data; boundary={boundary}" },
+            Body = $"--{boundary}\r\n"
+                   + $"Content-Disposition: form-data; name=\"{ShareIdeasPageComposer.IdeasField}\"\r\n\r\n"
+                   + $"{ideas}\r\n"
+                   + $"--{boundary}--\r\n"
+        };
+    }
+
+    private static APIGatewayProxyRequest PostUrlEncoded(string token, string ideas) =>
         new()
         {
             HttpMethod = "POST",
             Resource = "/ideas/{token}",
             PathParameters = new Dictionary<string, string> { ["token"] = token },
+            Headers = new Dictionary<string, string> { ["Content-Type"] = "application/x-www-form-urlencoded" },
             Body = $"{ShareIdeasPageComposer.IdeasField}={Uri.EscapeDataString(ideas)}"
         };
 
