@@ -28,8 +28,8 @@ public class ContributedGiftIdeaEntity
     public required DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
-    /// The SES message id this arrived in, or the empty string if it did not arrive by email. What
-    /// ties a stored suggestion back to the raw message when a report arrives later.
+    /// The SES message id this arrived in, from when gift ideas were shared by email. Always the
+    /// empty string now, for the reason <see cref="GiftIdeaEntity.InboundMessageId"/> gives.
     /// </summary>
     public required string InboundMessageId { get; set; }
 }

@@ -27,20 +27,9 @@ public class SecretTokenTests
     }
 
     [Fact]
-    public void Create_StaysWellInsideTheLengthAnAddressAllows()
-    {
-        // act
-        var token = SecretToken.Create();
-
-        // assert: a local part may be 64 octets. This also ends up printed underneath the button
-        // for anyone whose mail client ignores the mailto: link, so shorter is kinder.
-        token.Length.Should().BeLessThan(64);
-    }
-
-    [Fact]
     public void Hash_IsStableForTheSameToken()
     {
-        // arrange: a token arriving by email is matched by hashing it and looking for that, so an
+        // arrange: a token arriving in a link is matched by hashing it and looking for that, so an
         // unstable digest would mean nobody could ever submit anything.
         var token = SecretToken.Create();
 

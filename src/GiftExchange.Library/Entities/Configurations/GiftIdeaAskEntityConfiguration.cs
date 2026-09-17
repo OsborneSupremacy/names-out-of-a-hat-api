@@ -24,8 +24,8 @@ internal class GiftIdeaAskEntityConfiguration : IEntityTypeConfiguration<GiftIde
 
         builder.Property(ask => ask.IssuedAt).HasColumnName("issued_at").IsRequired();
 
-        // Inbound mail knows the token and nothing else, so this index is the whole route from an
-        // address to an ask.
+        // A share link carries the token and nothing else, so this index is the whole route from a
+        // link to an ask.
         builder
             .HasIndex(ask => ask.TokenHash)
             .HasDatabaseName("uq_gift_idea_ask_hash")

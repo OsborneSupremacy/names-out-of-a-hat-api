@@ -48,8 +48,8 @@ internal class AutomaticEmailSender
     /// <remarks>
     /// Failures are logged and swallowed on purpose. Everything calling this has already done the
     /// durable part of its work — stored a submission, claimed a throttle slot — and throwing here
-    /// would undo none of it while causing the caller's whole event to be retried, which for
-    /// inbound mail means storing the same message twice.
+    /// would undo none of it while causing the caller's whole event to be retried, which for a
+    /// queue handler means doing that durable part twice.
     ///
     /// That promise used to hold only from the SES call onwards, and parsing the recipient sat
     /// above it. An empty envelope sender — which is what a bounce carries, by design — reached

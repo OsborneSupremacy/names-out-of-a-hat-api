@@ -185,8 +185,8 @@ public class GiftIdeaProviderTests
         var exchange = await SeedExchangeAsync();
 
         // act
-        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "A cast iron skillet", "message-one");
-        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "Actually, a bread book", "message-two");
+        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "A cast iron skillet");
+        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "Actually, a bread book");
 
         // assert
         await using var context = _contextFactory.CreateDbContext();
@@ -196,14 +196,10 @@ public class GiftIdeaProviderTests
             .OrderBy(giftIdea => giftIdea.CreatedAt)
             .ToListAsync();
 
-        // The first submission survives the second. Text pulled out of an email is a guess at where
-        // the quoted reply began, and a guess that went wrong is only recoverable while what came
-        // before it is still here.
+        // The first submission survives the second, so an abuse report can still be answered
+        // against what was actually sent.
         stored.Select(giftIdea => giftIdea.Ideas)
             .Should().Equal("A cast iron skillet", "Actually, a bread book");
-
-        stored.Select(giftIdea => giftIdea.InboundMessageId)
-            .Should().Equal("message-one", "message-two");
     }
 
     [Fact]
@@ -212,7 +208,7 @@ public class GiftIdeaProviderTests
         // arrange
         var exchange = await SeedExchangeAsync();
         await _sut.IssueGiftIdeaTokensAsync(exchange.HatId);
-        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "A scarf", string.Empty);
+        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "A scarf");
 
         // act
         await _sut.DeleteParticipantAsync(exchange.OrganizerEmail, exchange.HatId, exchange.Alpha.Email);
@@ -239,7 +235,7 @@ public class GiftIdeaProviderTests
         await _sut.IssueGiftIdeaTokensAsync(exchange.HatId);
 
         foreach (var participantId in exchange.ParticipantIds)
-            await _sut.AddGiftIdeaAsync(participantId, "Something", string.Empty);
+            await _sut.AddGiftIdeaAsync(participantId, "Something");
 
         // act
         await _sut.DeleteHatAsync(new DeleteHatRequest

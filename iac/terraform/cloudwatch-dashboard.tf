@@ -25,7 +25,6 @@ locals {
     aws_lambda_function.authorizer.function_name,
     aws_lambda_function.invitation-queue-handler.function_name,
     aws_lambda_function.delivery-events-handler.function_name,
-    aws_lambda_function.inbound-gift-ideas-handler.function_name,
     aws_lambda_function.cooled-off-scheduler-handler.function_name,
   ]
 

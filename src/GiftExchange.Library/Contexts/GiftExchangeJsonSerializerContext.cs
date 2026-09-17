@@ -1,6 +1,4 @@
-﻿using Amazon.Lambda.SimpleEmailEvents;
-using Amazon.Lambda.SimpleEmailEvents.Actions;
-using Amazon.Lambda.SQSEvents;
+﻿using Amazon.Lambda.SQSEvents;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
@@ -57,10 +55,6 @@ namespace GiftExchange.Library.Contexts;
 // The assembly-level LambdaSerializer applies to every handler, so each entry point's event type
 // has to be here. LambdaHandlerSerializationTests keeps that honest.
 [JsonSerializable(typeof(SQSEvent))]
-// The SES receipt rule invokes InboundGiftIdeasHandler with this. Closed over LambdaReceiptAction
-// because that is the action the rule ends in; the S3 action before it writes the message to the
-// bucket and reports nothing back here.
-[JsonSerializable(typeof(SimpleEmailEvent<LambdaReceiptAction>))]
 [JsonSerializable(typeof(StatusCodeOnlyResponse))]
 [JsonSerializable(typeof(SubmitFeedbackRequest))]
 [JsonSerializable(typeof(UndeliverableInvitationsScheduleRequest))]

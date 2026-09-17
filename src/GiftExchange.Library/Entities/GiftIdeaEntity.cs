@@ -35,10 +35,8 @@ public class GiftIdeaEntity
     public required DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
-    /// The SES message id this arrived in, or the empty string if it did not arrive by email. What
-    /// ties a stored submission back to the raw message, for the same reason
-    /// <see cref="HatEntity.InvitationsSentFromIp"/> is kept: a report arrives long afterwards, and
-    /// only what was written down at the time can answer it.
+    /// The SES message id this arrived in, from when gift ideas were shared by email. Always the
+    /// empty string now that they are shared from a page. Kept because DSQL cannot drop the column.
     /// </summary>
     public required string InboundMessageId { get; set; }
 }

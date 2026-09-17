@@ -1,7 +1,7 @@
 namespace GiftExchange.Library.Entities;
 
 /// <summary>
-/// The token routing one participant's gift ideas email to their row, held as a hash.
+/// The token routing one participant's gift ideas link to their row, held as a hash.
 ///
 /// Its own table rather than a column on <see cref="ParticipantEntity"/>, on two counts. Whoever
 /// holds the plaintext can write to the exchange, which makes it a credential, and a credential has
@@ -22,8 +22,8 @@ public class GiftIdeaTokenEntity
 
     /// <summary>
     /// Hex-encoded SHA-256 of the token. Only ever the hash, as <c>LoginTokenProvider</c> keeps
-    /// only the hash of a magic link token: inbound mail is matched by hashing what arrived and
-    /// looking for it, so a dump of this table lets nobody submit anything.
+    /// only the hash of a magic link token: a link is matched by hashing the token in it and
+    /// looking for that, so a dump of this table lets nobody submit anything.
     /// </summary>
     public required string TokenHash { get; set; }
 

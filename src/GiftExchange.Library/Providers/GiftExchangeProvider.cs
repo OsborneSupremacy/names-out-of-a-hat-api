@@ -1228,10 +1228,9 @@ public class GiftExchangeProvider
     /// that moving somebody onto an address that already belongs to a person adopts that person's
     /// name, which can collide with another participant here; that is refused rather than resolved.
     ///
-    /// Nothing revokes the tokens issued against the old address, and nothing needs to.
-    /// <c>InboundGiftIdeasService.CheckSender</c> requires an inbound message's From to match the
-    /// participant's current address, so re-pointing this row is itself what stops whoever holds
-    /// the old invitation from writing into the exchange.
+    /// Moving the row does not revoke the links the old address was sent. The caller does that,
+    /// through <see cref="RevokeGiftIdeaLinksAsync"/> and <see cref="IssueLeaveTokenAsync"/>, before
+    /// it resends.
     /// </remarks>
     internal async Task<UpdateParticipantAddressResponse> UpdateParticipantAddressAsync(
         UpdateParticipantAddressRequest request
@@ -1619,10 +1618,10 @@ public class GiftExchangeProvider
     /// Issues one more routing token for a single participant, alongside any they already hold.
     /// </summary>
     /// <remarks>
-    /// Alongside, not instead of. An Ask has to put a working SHARE GIFT IDEAS address in front of
+    /// Alongside, not instead of. An Ask has to put a working SHARE GIFT IDEAS link in front of
     /// somebody who never asked for one, and their existing token cannot be reconstructed — only
     /// its hash was kept, which is the entire point of keeping it that way. Replacing the row would
-    /// hand them a new address while silently killing the one already sitting in their invitation,
+    /// hand them a new link while silently killing the one already sitting in their invitation,
     /// so a second is added and both keep working. Lookup is by token hash and never by
     /// participant, so nothing downstream has to know how many there are.
     /// </remarks>
@@ -1647,13 +1646,49 @@ public class GiftExchangeProvider
     }
 
     /// <summary>
+    /// Stops every gift ideas link this participant has been sent from working: the ones about
+    /// themselves, and every ask that came to them about somebody else.
+    /// </summary>
+    /// <remarks>
+    /// For an address correction, which happens because earlier mail went to the wrong inbox, and
+    /// the links in that mail are the whole credential. Whoever reads that inbox could otherwise
+    /// keep writing ideas in this participant's name.
+    ///
+    /// The two kinds are closed off differently. A gift ideas token is referenced by nothing, so it
+    /// is deleted. An ask is where a contribution records who wrote it and who it is about, so
+    /// deleting one would orphan what was already shared. Its hash is overwritten with the hash of
+    /// a token that is thrown away instead. The row survives and no link can reach it. Each ask
+    /// gets its own throwaway token, because the hash column is unique.
+    /// </remarks>
+    public async Task RevokeGiftIdeaLinksAsync(Guid participantId)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        await context.GiftIdeaTokens
+            .Where(token => token.ParticipantId == participantId)
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+
+        var asks = await context.GiftIdeaAsks
+            .Where(ask => ask.HelperParticipantId == participantId)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        foreach (var ask in asks)
+            ask.TokenHash = SecretToken.Hash(SecretToken.Create());
+
+        await context.SaveChangesAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Issues a leave token for a single participant, replacing any they already hold.
     /// </summary>
     /// <remarks>
     /// Replaces, where <see cref="IssueGiftIdeaTokenAsync"/> adds. The two differ because what the
-    /// tokens authorise differs: several live gift ideas addresses are the intended state, since an
-    /// Ask has to put a working one in front of somebody who never received theirs, and the worst a
-    /// stale one does is accept a note. A stale leave link removes somebody, and the only caller
+    /// tokens authorise differs: several live gift ideas links are the intended state, since an
+    /// Ask has to put a working one in front of somebody who never received theirs, and an address
+    /// correction closes all of them off at once through <see cref="RevokeGiftIdeaLinksAsync"/>. A
+    /// stale leave link removes somebody, and the only caller
     /// here is an address correction — which happens precisely because the earlier invitation went
     /// to the wrong inbox. Leaving that one live would let whoever holds it take the participant
     /// out of the exchange.
@@ -1688,12 +1723,12 @@ public class GiftExchangeProvider
     }
 
     /// <summary>
-    /// Resolves an incoming gift ideas email to the participant who sent it and the participant it
-    /// is for, from the hash of the token in the address it was addressed to.
+    /// Resolves a gift ideas link to the participant it was issued to and the participant their
+    /// ideas are for, from the hash of the token in the link.
     /// </summary>
     /// <param name="tokenHash">
-    /// <see cref="SecretToken.Hash"/> of the token taken from the recipient address. The plaintext
-    /// is never passed here — nothing stored could be compared against it.
+    /// <see cref="SecretToken.Hash"/> of the token taken from the link. The plaintext is never
+    /// passed here — nothing stored could be compared against it.
     /// </param>
     public async Task<(bool found, GiftIdeaRoute route)> FindGiftIdeaRouteAsync(string tokenHash)
     {
@@ -1772,8 +1807,7 @@ public class GiftExchangeProvider
     }
 
     /// <summary>
-    /// Resolves an incoming email to the ask it answers, from the hash of the token it was
-    /// addressed to. The counterpart of <see cref="FindGiftIdeaRouteAsync"/> for the case where
+    /// Resolves a gift ideas link to the ask it answers, from the hash of the token in the link. The counterpart of <see cref="FindGiftIdeaRouteAsync"/> for the case where
     /// somebody is writing about another participant rather than themselves.
     /// </summary>
     /// <remarks>
@@ -1785,7 +1819,7 @@ public class GiftExchangeProvider
     /// overlap.
     /// </remarks>
     /// <param name="tokenHash">
-    /// <see cref="SecretToken.Hash"/> of the token taken from the recipient address, as above.
+    /// <see cref="SecretToken.Hash"/> of the token taken from the link, as above.
     /// </param>
     public async Task<(bool found, GiftIdeaRoute route)> FindGiftIdeaContributionRouteAsync(string tokenHash)
     {
@@ -2020,7 +2054,7 @@ public class GiftExchangeProvider
     /// Appends a suggestion somebody made about another participant. Nothing is overwritten, for
     /// the reasons contributed_gift_idea--0001.sql gives.
     /// </summary>
-    public async Task<Guid> AddContributedGiftIdeaAsync(Guid askId, string ideas, string inboundMessageId)
+    public async Task<Guid> AddContributedGiftIdeaAsync(Guid askId, string ideas)
     {
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
@@ -2030,7 +2064,8 @@ public class GiftExchangeProvider
             GiftIdeaAskId = askId,
             Ideas = ideas,
             CreatedAt = DateTimeOffset.UtcNow,
-            InboundMessageId = inboundMessageId
+            // Nothing arrives by email any more, so there is no message to point back at.
+            InboundMessageId = string.Empty
         };
 
         context.ContributedGiftIdeas.Add(contribution);
@@ -2044,11 +2079,7 @@ public class GiftExchangeProvider
     /// Appends a submission. Nothing is overwritten: the newest row for a participant is the one
     /// that counts, and the ones before it stay for the reasons gift_idea--0001.sql gives.
     /// </summary>
-    /// <param name="inboundMessageId">
-    /// The SES message id this arrived in, or the empty string if it did not arrive by email. It is
-    /// what ties the row back to the raw message when somebody reports it.
-    /// </param>
-    public async Task<Guid> AddGiftIdeaAsync(Guid participantId, string ideas, string inboundMessageId)
+    public async Task<Guid> AddGiftIdeaAsync(Guid participantId, string ideas)
     {
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
@@ -2058,7 +2089,7 @@ public class GiftExchangeProvider
             ParticipantId = participantId,
             Ideas = ideas,
             CreatedAt = DateTimeOffset.UtcNow,
-            InboundMessageId = inboundMessageId
+            InboundMessageId = string.Empty
         };
 
         context.GiftIdeas.Add(giftIdea);
@@ -2066,6 +2097,47 @@ public class GiftExchangeProvider
         await context.SaveChangesAsync().ConfigureAwait(false);
 
         return giftIdea.GiftIdeaId;
+    }
+
+    /// <summary>
+    /// What a participant most recently shared about themselves, or the empty string if they have
+    /// shared nothing.
+    /// </summary>
+    /// <remarks>
+    /// Newest by <c>created_at</c>, which is the value gift_idea--0001.sql says decides the winner.
+    /// </remarks>
+    public async Task<string> GetLatestGiftIdeaAsync(Guid participantId)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        return await context.GiftIdeas
+            .AsNoTracking()
+            .Where(giftIdea => giftIdea.ParticipantId == participantId)
+            .OrderByDescending(giftIdea => giftIdea.CreatedAt)
+            .Select(giftIdea => giftIdea.Ideas)
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false) ?? string.Empty;
+    }
+
+    /// <summary>
+    /// What somebody most recently suggested in answer to one ask, or the empty string if they have
+    /// not answered it.
+    /// </summary>
+    /// <remarks>
+    /// Per ask rather than per helper. The same person can be asked about two different
+    /// participants, and what they said about one of them is no answer about the other.
+    /// </remarks>
+    public async Task<string> GetLatestContributedGiftIdeaAsync(Guid askId)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        return await context.ContributedGiftIdeas
+            .AsNoTracking()
+            .Where(contribution => contribution.GiftIdeaAskId == askId)
+            .OrderByDescending(contribution => contribution.CreatedAt)
+            .Select(contribution => contribution.Ideas)
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false) ?? string.Empty;
     }
 
     public async Task UpdateHatStatusAsync(string organizerEmail, Guid hatId, string newStatus)

@@ -7,7 +7,6 @@ using Amazon.SimpleSystemsManagement;
 using Amazon.AuroraDsql.Npgsql;
 using AWS.Lambda.Powertools.Tracing;
 using GiftExchange.Library.Interceptors;
-using Amazon.S3;
 using Amazon.SQS;
 using GiftExchange.Library.Validators;
 
@@ -65,7 +64,6 @@ internal static class ServiceProviderBuilder
                 .AddAWSService<IAmazonSimpleNotificationService>()
                 .AddAWSService<IAmazonScheduler>()
                 .AddAWSService<IAmazonComprehend>()
-                .AddAWSService<IAmazonS3>()
                 .AddAWSService<IAmazonSimpleSystemsManagement>()
                 .AddSingleton<IAmazonSimpleEmailService, AmazonSimpleEmailServiceClient>() // AddAWSService fails for SES
                 // Measured, because this is the single largest thing a cold start does and the one
@@ -163,6 +161,11 @@ internal static class ServiceProviderBuilder
                 .AddKeyedSingleton<IApiGatewayHandler, AskForGiftIdeasService>("get/ask/{token}")
                 .AddKeyedSingleton<IApiGatewayHandler, AskForGiftIdeasService>("post/ask/{token}")
 
+                // The same split again. The GET shows the form and the POST behind it shares what
+                // was written, so a scanner following the button forwards nothing to anybody.
+                .AddKeyedSingleton<IApiGatewayHandler, ShareGiftIdeasService>("get/ideas/{token}")
+                .AddKeyedSingleton<IApiGatewayHandler, ShareGiftIdeasService>("post/ideas/{token}")
+
                 // The same split, for the same reason, and here the stakes of getting it wrong are
                 // higher: a GET that acted would remove somebody from an exchange because their
                 // mail provider checked a link.
@@ -228,17 +231,16 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<CompletionEmailCompositionService>()
                 .AddSingleton<GiftIdeaEmailCompositionService>()
                 .AddSingleton<GiftIdeaContentPolicy>()
-                .AddSingleton<InboundEmailParser>()
                 .AddSingleton<IReplyThrottleProvider, ReplyThrottleProvider>()
                 .AddSingleton<AutomaticEmailSender>()
                 .AddSingleton<IEmailQueue, EmailQueue>()
                 .AddSingleton<IDataDeletionQueue, DataDeletionQueue>()
                 .AddSingleton<DataDeletionQueueHandlerService>()
                 .AddSingleton<AskPageComposer>()
+                .AddSingleton<ShareIdeasPageComposer>()
                 .AddSingleton<LeavePageComposer>()
                 .AddSingleton<LeaveEmailCompositionService>()
                 .AddSingleton<DoNotAddService>()
-                .AddSingleton<InboundGiftIdeasService>()
                 .AddSingleton<InvitationQueueHandlerService>()
                 .AddSingleton<DeliveryEventsService>()
                 .AddSingleton<UndeliverableInvitationsEmailCompositionService>()

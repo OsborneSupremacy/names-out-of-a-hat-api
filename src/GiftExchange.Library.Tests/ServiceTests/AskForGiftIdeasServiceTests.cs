@@ -167,7 +167,7 @@ public class AskForGiftIdeasServiceTests
     }
 
     [Fact]
-    public async Task Post_GivesThemAWorkingAddressOfTheirOwn()
+    public async Task Post_GivesThemAWorkingLinkOfTheirOwn()
     {
         // arrange
         var exchange = await SeedAsync();
@@ -181,7 +181,7 @@ public class AskForGiftIdeasServiceTests
         var ask = SentMessages().Single();
 
         ask.HtmlBody.Should().Contain("SHARE GIFT IDEAS");
-        ask.HtmlBody.Should().Contain("@ideas.namesoutofahat.com");
+        ask.HtmlBody.Should().Contain("https://api.namesoutofahat.com/ideas/");
 
         await using var context = _contextFactory.CreateDbContext();
 

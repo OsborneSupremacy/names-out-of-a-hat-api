@@ -13,7 +13,7 @@ namespace GiftExchange.Library.Tests.ServiceTests;
 /// on some of them — and a test that handed the service an already-parsed object would assert only
 /// that the test knows its own arrangement.
 ///
-/// The provider is the real one for the reason InboundGiftIdeasServiceTests gives: what is worth
+/// The provider is the real one for the reason ShareGiftIdeasServiceTests gives: what is worth
 /// pinning down is a message id and a tag resolving to a row, which a stub cannot demonstrate.
 /// </summary>
 [Collection(PostgresCollection.Name)]

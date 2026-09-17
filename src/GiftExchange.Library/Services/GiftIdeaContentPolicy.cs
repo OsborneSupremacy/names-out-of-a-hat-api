@@ -8,9 +8,9 @@ namespace GiftExchange.Library.Services;
 /// Links are allowed, which is a deliberate decision rather than an omission. A wishlist URL is the
 /// single most useful thing somebody can share, and refusing links would take most of the value out
 /// of this feature. What makes that acceptable is how narrow the opening is: to deliver one link to
-/// one person, a sender has to have been added to an exchange by its organizer, hold a secret token
-/// that was mailed to their address, and send from that address. This is not an open relay, and the
-/// blast radius of the worst case is a single recipient who already expects to hear from them.
+/// one person, a sender has to have been added to an exchange by its organizer and hold a secret
+/// link that was mailed to their address. This is not an open relay, and the blast radius of the
+/// worst case is a single recipient who already expects to hear from them.
 ///
 /// The rules below close the gaps that would otherwise be left, in the order they are worth having:
 /// the true destination of every link is always visible, links that exist to hide a destination are
@@ -52,17 +52,17 @@ internal partial class GiftIdeaContentPolicy
     /// </summary>
     private static readonly ImmutableHashSet<string> OwnDomains =
     [
-        "namesoutofahat.com", "ideas.namesoutofahat.com", "mail.namesoutofahat.com"
+        "namesoutofahat.com", "api.namesoutofahat.com", "mail.namesoutofahat.com"
     ];
 
     /// <summary>
     /// Applies every rule that does not need a network call, in the order that gives the sender the
     /// most useful complaint first.
     /// </summary>
-    /// <param name="body">The submitted text, already stripped of quoting.</param>
+    /// <param name="body">The submitted text.</param>
     /// <param name="pickedRecipientName">
-    /// The name of the person the sender drew. Its presence means their own invitation has been
-    /// quoted into the message.
+    /// The name of the person the sender drew, which must not reach the person the text is
+    /// forwarded to.
     /// </param>
     /// <returns><see cref="GiftIdeaSubmissionOutcome.Shared"/> when nothing is wrong with it.</returns>
     public GiftIdeaSubmissionOutcome Check(string body, string pickedRecipientName)
@@ -96,9 +96,9 @@ internal partial class GiftIdeaContentPolicy
     /// Whether the submitted text names the person the sender drew.
     /// </summary>
     /// <remarks>
-    /// The backstop behind quote stripping. If it fires, it usually means somebody forwarded their
-    /// invitation to the gift ideas address instead of using the button, and the invitation says
-    /// whose name they picked.
+    /// Whoever reads the ideas already knows who wrote them, so a name in the text that turns out
+    /// to be the writer's own pick tells them who drew whom. The likeliest way in is text pasted
+    /// from the invitation, which says whose name they picked.
     ///
     /// Matched on a word boundary so that a name like "Sam" does not fire on "same". It will still
     /// refuse the occasional innocent message from somebody whose recipient shares a name with a

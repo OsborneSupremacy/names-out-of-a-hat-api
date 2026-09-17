@@ -175,6 +175,13 @@ internal class EditParticipantAddressService : IApiGatewayHandler
             change.ParticipantId,
             request.HatId);
 
+        // Before anything is resent, and whether or not anything is. The gift ideas links already
+        // mailed went to the wrong inbox, and a link is all it takes to write ideas in this
+        // participant's name.
+        await _giftExchangeProvider
+            .RevokeGiftIdeaLinksAsync(change.ParticipantId)
+            .ConfigureAwait(false);
+
         if (messageType == EmailMessageType.Unspecified)
             return Success(resent: false, EmailMessageType.Unspecified);
 
@@ -221,19 +228,16 @@ internal class EditParticipantAddressService : IApiGatewayHandler
         }
         else
         {
-            // Issued alongside whatever the old address was sent, not instead of it — the tokens
-            // are only ever stored hashed, so the one already in somebody's mailbox cannot be
-            // reconstructed to put in this message. Nothing is revoked, and nothing needs to be:
-            // InboundGiftIdeasService checks an inbound message's From against the participant's
-            // current address, so moving this row is what stops whoever holds the old invitation
-            // writing into the exchange.
+            // A fresh one, because the ones the old address was sent were revoked before this
+            // was called.
             var giftIdeasToken = await _giftExchangeProvider
                 .IssueGiftIdeaTokenAsync(change.ParticipantId)
                 .ConfigureAwait(false);
 
-            // Replaced rather than added to, unlike the gift ideas token above. The old invitation
-            // went to an address that was wrong, and a leave link in it removes this participant
-            // from the exchange — so whoever is reading that inbox must not keep a working one.
+            // Replaced rather than revoked up front, because a new one is only wanted when an
+            // invitation is resent. The old invitation went to an address that was wrong, and a
+            // leave link in it removes this participant from the exchange — so whoever is reading
+            // that inbox must not keep a working one.
             //
             // Not for the organizer. They are a participant of their own exchange and can have
             // their address corrected like anybody else, but there is no leaving an exchange you

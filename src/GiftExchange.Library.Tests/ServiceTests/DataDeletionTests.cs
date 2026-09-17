@@ -48,7 +48,7 @@ public class DataDeletionTests
         var participant = await AddParticipantAsync(first);
         var participantId = (await _provider.GetParticipantIdsByEmailAsync(first.HatId))[participant.Person.Email];
 
-        await _provider.AddGiftIdeaAsync(participantId, "A good book", "message-one");
+        await _provider.AddGiftIdeaAsync(participantId, "A good book");
         await _provider.IssueLeaveTokensAsync(first.HatId);
         await _provider.RecordDoNotAddAsync(new RecordDoNotAddRequest
         {

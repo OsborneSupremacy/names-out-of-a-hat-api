@@ -215,7 +215,7 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
     /// <remarks>
     /// A token of their own, issued alongside any they already hold rather than over them. Theirs
     /// cannot be reconstructed — only its hash was kept — so this is the only way to put a working
-    /// SHARE GIFT IDEAS address into an email they did not originally receive.
+    /// SHARE GIFT IDEAS link into an email they did not originally receive.
     /// </remarks>
     private async Task AskThemWhatTheyWouldLikeAsync(GiftIdeaRoute route, AskTarget target)
     {

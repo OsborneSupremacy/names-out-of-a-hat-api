@@ -133,30 +133,27 @@ public class EmailCompositionServiceTests
     }
 
     [Fact]
-    public void ComposeEmail_CarriesAGiftIdeasButtonAddressedToTheParticipantsOwnToken()
+    public void ComposeEmail_CarriesAGiftIdeasButtonLinkingToTheParticipantsOwnToken()
     {
         // act
         var body = _sut.ComposeEmail(Invitation(giftIdeasToken: "abc123"));
 
         // assert
         body.Should().Contain("SHARE GIFT IDEAS");
-        body.Should().Contain("mailto:abc123@ideas.namesoutofahat.com");
-
-        // Printed in full as well as linked. A client that is not registered as the handler for
-        // mailto: does nothing at all when the button is clicked, with no error to explain it.
-        body.Should().Contain("abc123@ideas.namesoutofahat.com");
+        body.Should().Contain("href=\"https://api.namesoutofahat.com/ideas/abc123\"");
     }
 
     [Fact]
-    public void ComposeEmail_GivesTheGiftIdeasButtonAMailtoRatherThanAReply()
+    public void ComposeEmail_OffersNoWayToShareIdeasByReplying()
     {
         // act
         var body = _sut.ComposeEmail(Invitation(giftIdeasToken: "abc123"));
 
         // assert: this is a security property, not a styling one. This email names the recipient's
-        // own pick, so a reply would quote it, and the quoted text would be forwarded to the one
-        // person who must never learn it. A mailto: opens an empty message with nothing to quote.
-        body.Should().NotContain("href=\"mailto:donotreply");
+        // own pick, so a reply would quote it, and the quoted text could reach the one person who
+        // must never learn it. The button leads to an empty page instead.
+        body.Should().NotContain("mailto:donotreply");
+        body.Should().NotContain("ideas.namesoutofahat.com");
         body.Should().Contain("Please do not reply to this email",
             "the warning is what steers somebody away from the reply button and towards the button");
     }
@@ -164,13 +161,13 @@ public class EmailCompositionServiceTests
     [Fact]
     public void ComposeEmail_GivenNoToken_LeavesTheGiftIdeasBlockOutEntirely()
     {
-        // act: an invitation with no token issued gets no block, rather than a button addressed to
-        // "@ideas.namesoutofahat.com" that silently routes nowhere.
+        // act: an invitation with no token issued gets no block, rather than a button linking to a
+        // page that can only say the link isn't available.
         var body = _sut.ComposeEmail(Invitation(giftIdeasToken: string.Empty));
 
         // assert
         body.Should().NotContain("SHARE GIFT IDEAS");
-        body.Should().NotContain("ideas.namesoutofahat.com");
+        body.Should().NotContain("/ideas/");
     }
 
     [Theory]

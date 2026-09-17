@@ -13,7 +13,7 @@ namespace GiftExchange.Library.Tests.ServiceTests;
 /// them. Removing and re-adding somebody — the only way an organizer could do this before — takes
 /// all of that with it, and after the hat is shaken that silently breaks the draw.
 ///
-/// The provider is the real one, for the reason InboundGiftIdeasServiceTests gives. The queue and
+/// The provider is the real one, for the reason ShareGiftIdeasServiceTests gives. The queue and
 /// the throttle are substitutes, because what matters about them is what they were handed.
 /// </summary>
 [Collection(PostgresCollection.Name)]
@@ -136,30 +136,56 @@ public class EditParticipantAddressServiceTests
             .ToListAsync();
 
         tokens.Should().NotBeEmpty();
-        _queued.Single().HtmlBody.Should().Contain("ideas.namesoutofahat.com");
+        _queued.Single().HtmlBody.Should().Contain("https://api.namesoutofahat.com/ideas/");
     }
 
     /// <summary>
-    /// Nothing revokes the token the wrong address was sent, and nothing has to. An inbound message
-    /// is checked against the participant's current address, so moving the row is what closes the
-    /// old one off.
+    /// A gift ideas link is the whole credential, and the wrong address was sent some. Correcting
+    /// the address has to close every one of them off, or whoever reads that inbox keeps writing
+    /// ideas in this participant's name.
     /// </summary>
     [Fact]
     public async Task TheOldAddress_NoLongerAuthorisesAnythingItWasSent()
     {
-        // arrange
+        // arrange: their own link, and an ask that reached them about somebody else.
         var exchange = await SeedAsync(HatStatus.InvitationsSent);
+        var ids = await _provider.GetParticipantIdsByEmailAsync(exchange.HatId);
+
         var oldToken = await _provider.IssueGiftIdeaTokenAsync(exchange.TargetParticipantId);
+        var oldAskToken = await _provider.IssueGiftIdeaAskAsync(
+            ids[exchange.OtherEmail], exchange.TargetParticipantId, ids[exchange.OtherEmail]);
+
+        var askId = await AskIdForAsync(oldAskToken);
+        await _provider.AddContributedGiftIdeaAsync(askId, "A good umbrella");
 
         // act
         await _sut.EditParticipantAddressAsync(Request(exchange, "fixed@example.com"));
 
-        // assert: the token still resolves, and it now vouches for the new address and no other.
-        var (found, route) = await _provider.FindGiftIdeaRouteAsync(SecretToken.Hash(oldToken));
+        // assert
+        (await _provider.FindGiftIdeaRouteAsync(SecretToken.Hash(oldToken))).found
+            .Should().BeFalse("the link in the misdirected invitation must stop working");
 
-        found.Should().BeTrue();
-        route.Sender.Email.Should().Be("fixed@example.com");
-        route.Sender.Email.Should().NotBe(exchange.TargetEmail, "whoever holds the old invitation can no longer write in");
+        (await _provider.FindGiftIdeaContributionRouteAsync(SecretToken.Hash(oldAskToken))).found
+            .Should().BeFalse("nor may the link in a misdirected ask");
+
+        // The ask itself survives, because what was already shared on it records who it was about.
+        (await _provider.GetLatestContributedGiftIdeaAsync(askId)).Should().Be("A good umbrella");
+
+        // And the resent invitation carries a link that does work.
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        (await context.GiftIdeaTokens.CountAsync(token => token.ParticipantId == exchange.TargetParticipantId))
+            .Should().Be(1, "the old one was revoked and a fresh one issued for the resend");
+    }
+
+    private async Task<Guid> AskIdForAsync(string token)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        return await context.GiftIdeaAsks
+            .Where(ask => ask.TokenHash == SecretToken.Hash(token))
+            .Select(ask => ask.GiftIdeaAskId)
+            .SingleAsync();
     }
 
     /// <summary>

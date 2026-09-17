@@ -69,9 +69,6 @@ resource "aws_route53_record" "dmarc" {
 # receiving domain to say it accepts that. Without this record a strict reporting receiver just
 # does not send the report, silently — so the apex has been asking for aggregate reports that the
 # larger mailbox providers were entitled to withhold.
-#
-# The equivalent for ideas.namesoutofahat.com lives in ses-gift-ideas.tf, beside the record it
-# authorizes.
 resource "aws_route53_record" "dmarc_root_report_authorization" {
   zone_id = data.aws_route53_zone.main.zone_id
   name    = "namesoutofahat.com._report._dmarc.mail.namesoutofahat.com"

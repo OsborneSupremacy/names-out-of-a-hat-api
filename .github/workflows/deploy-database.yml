@@ -62,6 +62,8 @@ jobs:
           account_id=$(aws sts get-caller-identity --query Account --output text)
           echo "APP_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-app-exec-role" >> "$GITHUB_ENV"
           echo "SCHEDULER_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-cooled-off-scheduler-handler-lambda-role" >> "$GITHUB_ENV"
+          # The inbound mail role no longer exists, but --0008 granted to it and --0014 revokes it,
+          # and both still need the ARN substituted.
           echo "INBOUND_MAIL_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-inbound-gift-ideas-handler-lambda-role" >> "$GITHUB_ENV"
           echo "DELIVERY_EVENTS_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-delivery-events-handler-lambda-role" >> "$GITHUB_ENV"
           echo "DATA_DELETION_ROLE_ARN=arn:aws:iam::${account_id}:role/giftexchange-data-deletion-handler-lambda-role" >> "$GITHUB_ENV"

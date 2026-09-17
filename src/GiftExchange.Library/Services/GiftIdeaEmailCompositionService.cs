@@ -3,8 +3,8 @@
 namespace GiftExchange.Library.Services;
 
 /// <summary>
-/// The messages the inbound path sends: what went back to whoever wrote in, and what goes on to the
-/// person their ideas are for.
+/// The gift ideas emails: the buttons that lead to the share page, the asks, and what goes on to the
+/// person somebody's ideas are for.
 /// </summary>
 /// <remarks>
 /// Everything a sender wrote is HTML-encoded on its way into these bodies and none of it is ever
@@ -17,12 +17,6 @@ namespace GiftExchange.Library.Services;
 [UsedImplicitly]
 public class GiftIdeaEmailCompositionService
 {
-    public static string ConfirmationSubject => "We shared your gift ideas";
-
-    public static string CouldNotShareSubject => "We couldn't share your gift ideas";
-
-    public static string DoNotReplySubject => "This address isn't monitored";
-
     public static string ForwardSubject(string senderName) =>
         $"{senderName} shared gift ideas with you";
 
@@ -41,9 +35,6 @@ public class GiftIdeaEmailCompositionService
     public static string ContributionAskSubject(string subjectName) =>
         $"Any gift ideas for {subjectName}?";
 
-    public static string ContributionConfirmationSubject(string subjectName) =>
-        $"We shared your gift ideas for {subjectName}";
-
     public static string ContributionForwardSubject(string helperName, string subjectName) =>
         $"{helperName} shared gift ideas for {subjectName}";
 
@@ -57,16 +48,11 @@ public class GiftIdeaEmailCompositionService
     /// </remarks>
     public static string AskPartiallySentSubject => "We couldn't ask everyone you chose";
 
-    /// <summary>
-    /// Where gift ideas are received. A subdomain of its own, not the one invitations are sent
-    /// from: an MX record there would also catch the DMARC reports that already arrive at
-    /// mail.namesoutofahat.com, and SES receipt rules match a whole domain or one exact address,
-    /// with no way to claim a prefix.
-    /// </summary>
-    private const string GiftIdeasDomain = "ideas.namesoutofahat.com";
-
     /// <summary>Where the Ask button points. The API, not the front end.</summary>
     private const string AskUrl = "https://api.namesoutofahat.com/ask";
+
+    /// <summary>Where the SHARE GIFT IDEAS button points. The API, like the Ask.</summary>
+    private const string ShareIdeasUrl = "https://api.namesoutofahat.com/ideas";
 
     /// <summary>
     /// The block inviting somebody to share gift ideas about themselves, addressed to the token
@@ -80,7 +66,6 @@ public class GiftIdeaEmailCompositionService
         BuildShareBlock(
             giftIdeasToken,
             "SHARE GIFT IDEAS",
-            "My gift ideas",
             "Click above to share gift ideas with only the person who picked your name. Nobody else in the exchange will see them &mdash; not even the organizer.");
 
     /// <summary>
@@ -100,45 +85,33 @@ public class GiftIdeaEmailCompositionService
         return BuildShareBlock(
             askToken,
             $"SHARE GIFT IDEAS FOR {HttpUtility.HtmlEncode(subjectName.ToUpperInvariant())}",
-            $"Gift ideas for {subjectName}",
             $"Click above to send your ideas to the person shopping for {encodedName}. They'll see the ideas came from you. Nobody else will &mdash; not {encodedName}, and not the organizer.");
     }
 
     /// <summary>
-    /// A mailto: button, the sentence explaining it, and the address in full underneath.
+    /// A button leading to the share page, and the sentence explaining it.
     /// </summary>
     /// <remarks>
-    /// A <c>mailto:</c> link rather than a reply, and that distinction is doing security work
-    /// rather than cosmetic work. The email carrying this button may name somebody's own pick, so a
-    /// reply would quote it, the quoted text would be hard to strip reliably across mail clients,
-    /// and what leaked would be their pick, forwarded to the one person who must never learn it.
-    /// Clicking here opens an empty message instead, so there is nothing to quote and nothing to
-    /// strip.
-    ///
-    /// The address appears in full underneath, because a mail client that has not been registered
-    /// as the handler for mailto: links does nothing at all when this is clicked, with no error to
-    /// explain the silence.
+    /// An ordinary link to a page rather than anything that happens in the reader's mail client.
+    /// The page renders a form and nothing more, so a mail scanner fetching the link on delivery
+    /// shares nothing; only the button on that page does.
     ///
     /// One implementation behind both callers, so that the parts neither of them should be free to
-    /// reword &mdash; how to send, and the promise of an echo &mdash; cannot drift apart.
+    /// reword &mdash; where the button goes, and what happens after clicking it &mdash; cannot
+    /// drift apart.
     /// </remarks>
     private static string BuildShareBlock(
         string token,
         string buttonLabel,
-        string mailSubject,
         string explanation
     )
     {
-        var address = $"{token}@{GiftIdeasDomain}";
-        var mailto =
-            $"mailto:{HttpUtility.UrlEncode(token)}@{GiftIdeasDomain}?subject={HttpUtility.UrlEncode(mailSubject)}";
+        var url = $"{ShareIdeasUrl}/{HttpUtility.UrlEncode(token)}";
 
         return $"""
-                <a href="{HttpUtility.HtmlAttributeEncode(mailto)}" style="background-color:#1f7a4d;color:#ffffff;padding:12px 22px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:bold;">{buttonLabel}</a>
+                <a href="{HttpUtility.HtmlAttributeEncode(url)}" style="background-color:#1f7a4d;color:#ffffff;padding:12px 22px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:bold;">{buttonLabel}</a>
                 <br /><br />
-                {explanation} Your email will open with the address already filled in; just type your ideas and send. We'll email you back to confirm exactly what was shared.
-                <br /><br />
-                <small style="color:#666666;">Button not working? Send your ideas to {HttpUtility.HtmlEncode(address)}</small>
+                {explanation} The button opens a page where you can type your ideas, and change them later if you think of something better.
                 """;
     }
 
@@ -146,8 +119,8 @@ public class GiftIdeaEmailCompositionService
     /// The block offering to ask for gift ideas about the recipient's own pick, on their behalf.
     /// </summary>
     /// <remarks>
-    /// An ordinary link rather than a mailto:, because what it triggers happens on our side. It
-    /// lands on a page instead of performing the Ask outright, and that is deliberate: a link in an
+    /// Lands on a page instead of performing the Ask outright, as the share button does, and that is
+    /// deliberate: a link in an
     /// email is fetched by mail security scanners before anybody reads it, so a link that acted
     /// immediately would send the Ask on delivery — burning the throttle window and mailing
     /// somebody on behalf of a person who never clicked anything.
@@ -169,70 +142,6 @@ public class GiftIdeaEmailCompositionService
     }
 
     /// <summary>
-    /// Sent back to the participant once their ideas are on their way.
-    /// </summary>
-    /// <remarks>
-    /// The echo is the reason this exists. What gets stored is text pulled out of an email, which
-    /// means a guess was made about where their message ended and a quoted one began. Showing them
-    /// exactly what was kept turns a bad guess into something they can see and correct, rather than
-    /// something that quietly goes out wrong.
-    /// </remarks>
-    public string ComposeConfirmation(string ideas, ImmutableList<string> droppedAttachments) =>
-        Wrap([
-            "Thanks — your gift ideas are on their way to the person who picked your name.",
-            "Here's exactly what we shared:",
-            Quote(ideas),
-            ..DroppedAttachmentsNote(droppedAttachments),
-            "Changed your mind? Send another email to the same address and it replaces this one.",
-            "Nobody else in the exchange sees this — not even the organizer."
-        ]);
-
-    /// <summary>
-    /// Sent back when the submission cannot be used, saying which of the rules it ran into.
-    /// </summary>
-    /// <remarks>
-    /// Every branch says what to do next, because a reply that only says no leaves somebody with a
-    /// gift exchange they cannot take part in and no idea why.
-    /// </remarks>
-    public string ComposeRejection(ComposeRejectionRequest request) =>
-        Wrap([
-            "We couldn't share what you sent.",
-            ExplainRejection(request.Outcome),
-            ..DroppedAttachmentsNote(request.DroppedAttachments),
-            ..TryAgainNote(request)
-        ]);
-
-    /// <summary>
-    /// The way back after a refusal: the same button the invitation carried, addressed to the same
-    /// place the refused message was sent.
-    /// </summary>
-    /// <remarks>
-    /// This used to say "reply to this email", which was wrong twice over. Everything here goes out
-    /// from the no-reply address, so a reply landed on the mailbox that answers only that nobody
-    /// read it — and that answer is throttled to one a day, so somebody who tried twice got silence
-    /// the second time. It was also the worst available advice for the commonest refusal: a message
-    /// refused for naming the sender's own pick had quoted their invitation, and a reply would have
-    /// quoted something again. A mailto: opens an empty message, so there is nothing to quote.
-    ///
-    /// Says outright not to reply, rather than leaving the button to imply it. The reply is the
-    /// obvious move and the button is one more thing to notice, so the sentence has to beat the
-    /// habit.
-    /// </remarks>
-    private static IEnumerable<string> TryAgainNote(ComposeRejectionRequest request)
-    {
-        // Nothing to offer somebody whose exchange has finished. The next message would meet the
-        // same refusal, and a button inviting one would be promising something that cannot happen.
-        if (request.Outcome == GiftIdeaSubmissionOutcome.RejectedExchangeNotAcceptingIdeas)
-            yield break;
-
-        yield return "Please send a new email rather than replying to this one &mdash; replies reach an address nobody reads. The button below opens an empty message addressed to the right place.";
-
-        yield return request.IsContribution
-            ? BuildShareIdeasAboutBlock(request.SubjectName, request.GiftIdeasToken)
-            : BuildShareGiftIdeasBlock(request.GiftIdeasToken);
-    }
-
-    /// <summary>
     /// Carries one participant's ideas to the person who drew them.
     /// </summary>
     /// <remarks>
@@ -247,17 +156,6 @@ public class GiftIdeaEmailCompositionService
             Quote(ideas),
             "<i>You're the only person seeing this. Please don't reply to this email — your reply would reveal that you have their name.</i>",
             BuildLinkDisclaimer()
-        ]);
-
-    /// <summary>
-    /// Sent to somebody who wrote to the no-reply address, which is a reasonable thing to try and
-    /// currently gets no response at all.
-    /// </summary>
-    public string ComposeDoNotReply() =>
-        Wrap([
-            "This email address isn't monitored by a human, so nobody has read what you sent.",
-            "If you want to share gift ideas, use the <b>SHARE GIFT IDEAS</b> button from your invitation. It opens a new email addressed to the right place.",
-            "If you need to reach the person running your gift exchange, reply to their invitation directly or contact them yourself — we can't pass a message on for you."
         ]);
 
     /// <summary>
@@ -368,88 +266,6 @@ public class GiftIdeaEmailCompositionService
             $"<i>You're the only person we've shown this to, and we didn't tell {HttpUtility.HtmlEncode(helperName)} who was asking. Please don't reply to this email &mdash; nobody reads this address.</i>",
             BuildLinkDisclaimer()
         ]);
-
-    /// <summary>
-    /// Sent back to somebody once their suggestions about another participant are on their way.
-    /// </summary>
-    /// <remarks>
-    /// Echoes what was kept, for the reason <see cref="ComposeConfirmation"/> does, and repeats
-    /// that the ideas are attributed. Somebody who only reads one of the two emails should still
-    /// find that out.
-    /// </remarks>
-    public string ComposeContributionConfirmation(
-        string subjectName,
-        string ideas,
-        ImmutableList<string> droppedAttachments
-    )
-    {
-        var encodedName = HttpUtility.HtmlEncode(subjectName);
-
-        return Wrap([
-            $"Thanks &mdash; your ideas are on their way to the person shopping for {encodedName}.",
-            "Here's exactly what we shared:",
-            Quote(ideas),
-            ..DroppedAttachmentsNote(droppedAttachments),
-            "They'll see that these came from you.",
-            "Changed your mind? Send another email to the same address and it replaces this one.",
-            $"Nobody else sees this &mdash; not {encodedName}, and not the organizer."
-        ]);
-    }
-
-
-    private static string ExplainRejection(GiftIdeaSubmissionOutcome outcome) =>
-        outcome switch
-        {
-            GiftIdeaSubmissionOutcome.RejectedNothingToShare =>
-                "We couldn't find any text in your message. Write your ideas in the body of the email and send it again.",
-
-            GiftIdeaSubmissionOutcome.RejectedTooLong =>
-                $"Your message is longer than we can handle — please shorten it to under about {GiftIdeaContentPolicy.MaxBodyBytes / 1000},000 characters and send it again.",
-
-            // Said carefully. The likeliest cause by far is that they forwarded their invitation
-            // rather than using the button, which is an easy mistake and not a suspicious one.
-            GiftIdeaSubmissionOutcome.RejectedWouldRevealTheirPick =>
-                "Your message mentions the name of the person you picked. That usually happens when an invitation gets forwarded or quoted, and we can't pass it on — it would tell the person reading it whose name you drew. Please send just your gift ideas, in a fresh email.",
-
-            GiftIdeaSubmissionOutcome.RejectedShortenedLink =>
-                "Your message contains a shortened link. We can't show the person receiving it where a shortened link leads, so please paste the full web address instead.",
-
-            GiftIdeaSubmissionOutcome.RejectedSelfReferentialLink =>
-                "Your message links back to namesoutofahat.com. We don't pass those on. Please send your gift ideas without it.",
-
-            GiftIdeaSubmissionOutcome.RejectedTooManyLinks =>
-                $"Your message contains more than {GiftIdeaContentPolicy.MaxLinks} links. Please send a shorter list.",
-
-            GiftIdeaSubmissionOutcome.RejectedInappropriateContent =>
-                "Your message contains content we can't pass on. Please reword it and send it again.",
-
-            // Distinct from the line above on purpose: their message may be perfectly fine, and
-            // telling somebody their gift ideas were inappropriate when the checker was simply
-            // unreachable is both wrong and unhelpful.
-            GiftIdeaSubmissionOutcome.RejectedModerationUnavailable =>
-                "We couldn't check your message just now. Please send it again in a few minutes.",
-
-            GiftIdeaSubmissionOutcome.RejectedExchangeNotAcceptingIdeas =>
-                "This gift exchange has finished, so there's nobody left to share ideas with.",
-
-            _ => "Something went wrong at our end. Please try again."
-        };
-
-    /// <summary>
-    /// Named, not silently discarded. Somebody who attached a photo of the thing they want should
-    /// find out that it did not go, rather than assume it did.
-    /// </summary>
-    private static IEnumerable<string> DroppedAttachmentsNote(ImmutableList<string> droppedAttachments)
-    {
-        if (droppedAttachments.Count == 0)
-            yield break;
-
-        var names = string.Join(", ", droppedAttachments.Select(HttpUtility.HtmlEncode));
-
-        yield return $"""
-                      <i>You attached {names}, which we couldn't include — we're only able to pass on the text of your message. If the attachment matters, describe it or include a link instead.</i>
-                      """;
-    }
 
     /// <summary>
     /// Says plainly that links are the sender's own and are not checked.

@@ -20,7 +20,7 @@ internal class GiftIdeaTokenEntityConfiguration : IEntityTypeConfiguration<GiftI
 
         builder.Property(token => token.IssuedAt).HasColumnName("issued_at").IsRequired();
 
-        // Inbound mail knows the token and nothing else, so this is the one path that reaches a
+        // A share link carries the token and nothing else, so this is the one path that reaches a
         // participant without a hat id.
         builder
             .HasIndex(token => token.TokenHash)
@@ -28,7 +28,7 @@ internal class GiftIdeaTokenEntityConfiguration : IEntityTypeConfiguration<GiftI
             .IsUnique();
 
         // Several live tokens per participant is the intended state, not an oversight. An Ask has
-        // to put a working SHARE GIFT IDEAS address into an email the recipient never received,
+        // to put a working SHARE GIFT IDEAS link into an email the recipient never received,
         // and only the hash of their existing token is kept, so a new one is issued alongside it
         // rather than over it — every address anyone has ever been sent keeps working.
         //

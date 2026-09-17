@@ -132,10 +132,10 @@ public class CompletionEmailCompositionServiceTests
         // act
         var body = _sut.ComposeEmail(HatFor("Family Christmas"), "Alice");
 
-        // assert: the exchange is over, so an invitation to share ideas would be answered by a
-        // rejection. Nothing here should offer it.
+        // assert: the exchange is over, so a link to share ideas would only lead to a page saying
+        // it isn't available. Nothing here should offer it.
         body.Should().NotContain("SHARE GIFT IDEAS");
-        body.Should().NotContain("ideas.namesoutofahat.com");
+        body.Should().NotContain("/ideas/");
     }
 
     private static Hat HatFor(string hatName) =>

@@ -22,7 +22,7 @@
 # Cost is not a consideration at this volume. The first 100,000 traces recorded per month are free
 # and this application will not approach that, holiday season included.
 #
-# Applied to all six functions rather than the API router alone. The router is where latency is
+# Applied to all five functions rather than the API router alone. The router is where latency is
 # user-visible, but the queue handlers are where the work happens unobserved, and those are the
 # ones where "it ran and something took a while" is currently the entire available account.
 # ---------------------------------------------------------------------------------------------
@@ -33,7 +33,6 @@ resource "aws_iam_role_policy_attachment" "xray_write" {
     authorizer           = aws_iam_role.authorizer_exec_role.name
     invitation_queue     = aws_iam_role.invitation-queue-handler-role.name
     delivery_events      = aws_iam_role.delivery-events-handler-role.name
-    inbound_gift_ideas   = aws_iam_role.inbound-gift-ideas-handler-role.name
     cooled_off_scheduler = aws_iam_role.cooled-off-scheduler-handler-role.name
   }
 

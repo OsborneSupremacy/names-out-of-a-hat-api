@@ -34,7 +34,7 @@ public class UndeliverableInvitationsServiceTests
     private readonly IAmazonSimpleEmailService _ses = Substitute.For<IAmazonSimpleEmailService>();
 
     /// <summary>
-    /// Raw MIME captured as each send happens, for the reason InboundGiftIdeasServiceTests gives:
+    /// Raw MIME captured as each send happens, for the reason ShareGiftIdeasServiceTests gives:
     /// the sender disposes the buffer it wrote, so there is nothing to read off the recorded
     /// argument afterwards.
     /// </summary>

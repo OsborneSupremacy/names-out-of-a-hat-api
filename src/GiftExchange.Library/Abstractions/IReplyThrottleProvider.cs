@@ -4,16 +4,12 @@ namespace GiftExchange.Library.Abstractions;
 /// Caps how often this application will act on a repeated request from the same source.
 /// </summary>
 /// <remarks>
-/// Internal because the two slot methods speak in <c>Messaging</c> records, which are internal. The
+/// Internal because both slot methods speak in <c>Messaging</c> records, which are internal. The
 /// test project reaches it through <c>InternalsVisibleTo</c>, and NSubstitute through
 /// <c>DynamicProxyGenAssembly2</c>.
 /// </remarks>
 internal interface IReplyThrottleProvider
 {
-    /// <summary>Claims this address's one reply for the window.</summary>
-    /// <returns>false when it has already been answered inside the window.</returns>
-    Task<bool> TryReserveReplySlotAsync(string kind, string email);
-
     /// <summary>
     /// Claims one participant's Ask to another for the window.
     /// </summary>

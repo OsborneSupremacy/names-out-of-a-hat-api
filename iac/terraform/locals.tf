@@ -7,8 +7,7 @@ locals {
   undeliverable_scheduler_group_name = "giftexchange-undeliverable-invitations"
 
   # The topic SES publishes delivery events to. Declared in email/terraform alongside the rest of
-  # this domain's sending configuration, and reached the same way the inbound rules reach the
-  # receipt rule set name.
+  # this domain's sending configuration, and reached through the terraform_remote_state in data.tf.
   delivery_events_topic_arn = data.terraform_remote_state.email.outputs.delivery_events_topic_arn
 
   common_environment_variables = {

@@ -5,8 +5,8 @@ resource "aws_lambda_function" "delivery-events-handler" {
   runtime       = "dotnet10"
   architectures = ["arm64"]
 
-  # Matches the inbound mail function rather than the queue handler that sends: this one opens a
-  # DSQL connection and signs an IAM token on a cold start, and Lambda scales CPU with memory.
+  # More than the queue handler that sends: this one opens a DSQL connection and signs an IAM token
+  # on a cold start, and Lambda scales CPU with memory.
   memory_size = 1024
 
   # Nothing is waiting. The work is one read and one write of a single row.
@@ -75,11 +75,10 @@ resource "aws_iam_role_policy" "delivery-events-handler-policy" {
 # it never sends, replies or suppresses anything, and the events it acts on are about messages that
 # have already gone.
 
-# As with the inbound mail function: dsql:DbConnect permits opening a connection, and which database
-# role it may connect as is decided inside the database by the AWS IAM GRANT in
-# db/roles/giftexchange_user--0011.sql. Without that changeset applied this function reaches the
-# cluster and gets no further, and the failure is quiet -- mail keeps sending, events keep arriving,
-# and the organizer's view simply never fills in.
+# dsql:DbConnect permits opening a connection, and which database role it may connect as is decided
+# inside the database by the AWS IAM GRANT in db/roles/giftexchange_user--0011.sql. Without that
+# changeset applied this function reaches the cluster and gets no further, and the failure is quiet
+# -- mail keeps sending, events keep arriving, and the organizer's view simply never fills in.
 resource "aws_iam_role_policy" "delivery-events-handler-dsql-policy" {
   name = "giftexchange-delivery-events-handler-dsql-policy"
   role = aws_iam_role.delivery-events-handler-role.id

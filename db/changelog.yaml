@@ -1145,3 +1145,18 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: AWS IAM REVOKE giftexchange_user FROM '${data_deletion_role_arn}'
+
+  - changeSet:
+      id: giftexchange_user--0014
+      author: ben
+      comment: >
+        Withdraws --0008. The inbound mail Lambda is gone, and a role recreated later under the same
+        name would otherwise inherit its grant.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0014.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: AWS IAM GRANT giftexchange_user TO '${inbound_mail_role_arn}'

@@ -12,11 +12,11 @@ namespace GiftExchange.Library.Utility;
 internal static class SecretToken
 {
     /// <summary>
-    /// 128 bits, for a token that has to be legible.
+    /// 128 bits, for the gift ideas tokens.
     ///
-    /// Enough that guessing is not a strategy, while keeping the encoded form short enough to sit
-    /// in an email address somebody might have to read off a screen and retype. A token that only
-    /// ever travels inside a link has no such constraint and can afford to be longer.
+    /// Enough that guessing is not a strategy. Sized when these tokens sat in an email address
+    /// somebody might have to retype; they travel only in links now, and are kept this length so
+    /// that links already issued and links issued today look the same.
     /// </summary>
     public const int LegibleTokenBytes = 16;
 
@@ -34,8 +34,7 @@ internal static class SecretToken
     /// </summary>
     /// <remarks>
     /// Base64url rather than plain base64: it yields only letters, digits, '-' and '_', all of
-    /// which an email local part may carry unquoted and a query string may carry unencoded, where
-    /// base64's '+' and '/' may not.
+    /// which a URL path or query string may carry unencoded, where base64's '+' and '/' may not.
     /// </remarks>
     /// <param name="tokenBytes">
     /// How much randomness to draw. Stated by the caller rather than fixed here, because the two

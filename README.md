@@ -38,11 +38,11 @@ Exclude a spouse. Exclude whoever they drew last year. Exclude a sibling who alw
 
 ### You can ask what somebody wants without revealing that you drew them
 
-A participant can ask the person whose name they drew what they'd like, and the question arrives without a name on it. They can also ask *around* them — a spouse, a parent, anyone else in the exchange — for people who don't want to tip off the recipient at all. Replies come back by email and are forwarded on with the asker's identity still withheld. The paper equivalent requires a trusted go-between who then knows the answer.
+A participant can ask the person whose name they drew what they'd like, and the question arrives without a name on it. They can also ask *around* them — a spouse, a parent, anyone else in the exchange — for people who don't want to tip off the recipient at all. Whatever they share is forwarded on by email, with the asker's identity still withheld. The paper equivalent requires a trusted go-between who then knows the answer.
 
-### Gift ideas arrive by replying to an email
+### Sharing gift ideas takes one button
 
-No account, no app, no link to click. The address a participant replies to is unique to that conversation, which is how a plain reply gets routed to the right person while staying anonymous.
+No account and no app. The SHARE GIFT IDEAS button in an email opens a page with a box to type in, and what's typed there goes to the one person it's for. The link is unique to that participant, or to that particular ask, which is how the ideas get routed to the right person while the person holding their name stays anonymous. Coming back to the same link shows what was shared last, so changing your mind is an edit rather than starting again.
 
 ### You can see whether the invitation actually arrived
 
@@ -175,11 +175,13 @@ What it will not do is name somebody nothing has been heard about. Only the thre
 
 The email says nothing about the draw. An organizer who is also a participant receives it, and an administrative notice is not a place to let slip what their own invitation was written to keep from them.
 
-### Inbound mail is silent until it knows who's writing
+### Sharing ideas is a page, not a reply
 
-A message arriving at a gift ideas address is checked in a deliberate order. Everything that decides whether we're willing to speak to this sender at all comes first, and every one of those failures ends in silence — at that point nothing has established who wrote in, and replying to an address we can't vouch for turns the mailbox into a way of sending mail to strangers. Once a live token and a matching From address have both been seen, there's a known participant to reply to, and from there every refusal says why.
+Gift ideas used to arrive by email, at an address unique to each participant. It worked, but it meant guessing where somebody's words ended and the quoted message began, a `mailto:` button that silently did nothing for anybody reading webmail in a browser, and an inbound mail pipeline whose failures were silent. A page has none of those problems, and it's the same GET-renders, POST-acts split the Ask and leaving already use, so a mail scanner fetching the link shares nothing.
 
-Nothing a sender writes is ever turned into a link. URLs arrive as text, so the reader sees where they actually go rather than words wrapped around an anchor. Some clients will make them clickable anyway, which is fine — what matters is that this application isn't the thing that hid the address.
+The link is the whole credential. Email could also check that the From address matched the participant, and a page can't, so correcting a participant's address revokes every gift ideas link the old address was sent — their own, and every ask that reached them about somebody else. An ask is closed off by overwriting its token hash rather than by deleting it, because the ask row is where a contribution records who wrote it and who it's about.
+
+Refusals happen on the page, with what was typed kept in the box: a mention of the writer's own pick, shortened links, links back to this site, too many links, and anything moderation turns down. Nothing a sender writes is ever turned into a link. URLs arrive as text, so the reader sees where they actually go rather than words wrapped around an anchor. Some clients will make them clickable anyway, which is fine — what matters is that this application isn't the thing that hid the address.
 
 ### Correcting an address is its own endpoint
 
@@ -225,8 +227,8 @@ Free-text fields go through Amazon Comprehend's toxicity detection. If the check
 - **API** — .NET 10 on AWS Lambda behind API Gateway. A single router Lambda dispatches on `method + resource` to a keyed handler, so one deployment artifact serves every endpoint.
 - **Database** — Aurora DSQL (Postgres) via EF Core, connecting as a non-admin role with IAM auth. Migrations run as admin from their own workflow; the application role can't.
 - **Ephemeral state** — DynamoDB with TTL, for magic-link tokens and throttle windows.
-- **Email** — SES for sending and receiving, SQS for fan-out and for delivery events, SNS in between.
-- **Async work** — EventBridge Scheduler for the cool-off transition and the delivery check that follows a send, SQS-triggered Lambdas for invitations, delivery events and inbound gift ideas.
+- **Email** — SES for sending, SQS for fan-out and for delivery events, SNS in between.
+- **Async work** — EventBridge Scheduler for the cool-off transition and the delivery check that follows a send, SQS-triggered Lambdas for invitations and delivery events.
 - **Infrastructure** — Terraform, in two independent roots. See below.
 
 ### Repository layout
@@ -241,7 +243,7 @@ Free-text fields go through Amazon Comprehend's toxicity detection. If the check
 | `db`                             | SQL migrations for tables and roles.                                                                                                |
 | `scripts`                        | Lambda build script.                                                                                                                |
 
-The two Terraform roots have separate state. `iac/` reads `email/` through a remote state data source, so when a new output is added, `email/` has to be applied first.
+The two Terraform roots have separate state. `iac/` reads `email/` through a remote state data source, so when a new output is added, `email/` has to be applied first, and when one is removed, `iac/` goes first.
 
 ## Running it locally
 
