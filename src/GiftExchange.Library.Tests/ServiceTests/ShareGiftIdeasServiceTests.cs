@@ -61,7 +61,7 @@ public class ShareGiftIdeasServiceTests
 
         _provider = serviceProvider.GetRequiredService<GiftExchangeProvider>();
 
-        _moderation.ValidateContentAsync(Arg.Any<string>(), Arg.Any<string>()).Returns((true, string.Empty));
+        _moderation.ModerateAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(ModerationVerdict.Clean);
 
         _ses.When(ses => ses.SendRawEmailAsync(Arg.Any<SendRawEmailRequest>(), Arg.Any<CancellationToken>()))
             .Do(call =>
@@ -278,13 +278,33 @@ public class ShareGiftIdeasServiceTests
     {
         // arrange
         var exchange = await SeedAsync();
-        _moderation.ValidateContentAsync(Arg.Any<string>(), Arg.Any<string>()).Returns((false, "no"));
+        _moderation.ModerateAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(ModerationVerdict.Toxic);
 
         // act
         var response = await _sut.FunctionHandler(Post(exchange.Token, "Something unpleasant."), new FakeLambdaContext());
 
         // assert
         response.Body.Should().Contain("content we can't pass on");
+        _sent.Should().BeEmpty();
+        await ShouldHaveStoredNothing(exchange);
+    }
+
+    [Fact]
+    public async Task Post_GivenModerationIsUnavailable_AsksThemToTryAgainRatherThanReword()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        _moderation.ModerateAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(ModerationVerdict.Unavailable);
+
+        // act
+        var response = await _sut.FunctionHandler(Post(exchange.Token, "A cast iron skillet."), new FakeLambdaContext());
+
+        // assert: still refused, because nothing unchecked is forwarded. But the text may be fine,
+        // so the page must not call it inappropriate, and it keeps the text for the retry.
+        response.Body.Should().Contain("try again in a few minutes");
+        response.Body.Should().NotContain("content we can't pass on");
+        response.Body.Should().Contain(">A cast iron skillet.</textarea>");
+
         _sent.Should().BeEmpty();
         await ShouldHaveStoredNothing(exchange);
     }
@@ -299,7 +319,7 @@ public class ShareGiftIdeasServiceTests
         await _sut.FunctionHandler(Post(exchange.Token, "https://bit.ly/abc"), new FakeLambdaContext());
 
         // assert: text refused on a rule this application can apply itself never reaches Comprehend.
-        await _moderation.DidNotReceive().ValidateContentAsync(Arg.Any<string>(), Arg.Any<string>());
+        await _moderation.DidNotReceive().ModerateAsync(Arg.Any<string>(), Arg.Any<string>());
     }
 
     [Fact]

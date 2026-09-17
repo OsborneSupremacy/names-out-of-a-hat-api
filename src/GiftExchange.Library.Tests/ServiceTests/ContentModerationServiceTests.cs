@@ -72,6 +72,60 @@ public class ContentModerationServiceTests
     }
 
     [Fact]
+    public async Task ModerateAsync_GivenCleanContent_IsClean()
+    {
+        // arrange
+        RespondWithScore(0.01f);
+
+        // act
+        var verdict = await _sut.ModerateAsync("A cast iron skillet", "gift ideas");
+
+        // assert
+        verdict.Should().Be(ModerationVerdict.Clean);
+    }
+
+    [Fact]
+    public async Task ModerateAsync_GivenContentOverTheThreshold_IsToxic()
+    {
+        // arrange
+        RespondWithScore(0.99f);
+
+        // act
+        var verdict = await _sut.ModerateAsync("something nasty", "gift ideas");
+
+        // assert
+        verdict.Should().Be(ModerationVerdict.Toxic);
+    }
+
+    [Fact]
+    public async Task ModerateAsync_WhenComprehendThrows_IsUnavailableRatherThanClean()
+    {
+        // arrange
+        _comprehend
+            .DetectToxicContentAsync(Arg.Any<DetectToxicContentRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new AmazonComprehendException("Comprehend is unavailable"));
+
+        // act
+        var verdict = await _sut.ModerateAsync("A cast iron skillet", "gift ideas");
+
+        // assert: fails closed, and says why, so the caller can tell its user to try again rather
+        // than to reword something that was never checked.
+        verdict.Should().Be(ModerationVerdict.Unavailable);
+    }
+
+    [Fact]
+    public async Task ModerateAsync_GivenEmptyText_IsCleanWithoutCallingComprehend()
+    {
+        // act
+        var verdict = await _sut.ModerateAsync("  ", "gift ideas");
+
+        // assert
+        verdict.Should().Be(ModerationVerdict.Clean);
+        await _comprehend.DidNotReceive()
+            .DetectToxicContentAsync(Arg.Any<DetectToxicContentRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ValidateMultipleFieldsAsync_WhenComprehendThrows_RejectsEveryField()
     {
         // arrange

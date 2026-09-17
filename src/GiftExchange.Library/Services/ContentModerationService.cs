@@ -39,8 +39,33 @@ internal class ContentModerationService : IContentModerationService
     /// Validates that the provided text does not contain toxic or inappropriate content.
     /// </summary>
     /// <remarks>
-    /// Fails closed: if the check cannot be performed, the content is rejected rather than
-    /// accepted. Empty text is the one exception, since there is nothing to check.
+    /// The message-shaped form of <see cref="ModerateAsync"/>, for the callers that report problems
+    /// as a list of error strings. Fails closed, as that does.
+    /// </remarks>
+    /// <param name="text">The text to validate</param>
+    /// <param name="fieldName">The name of the field being validated (for error messages)</param>
+    /// <returns>A tuple indicating if validation passed and an error message if it failed</returns>
+    public async Task<(bool IsValid, string ErrorMessage)> ValidateContentAsync(string text, string fieldName) =>
+        await ModerateAsync(text, fieldName).ConfigureAwait(false) switch
+        {
+            ModerationVerdict.Clean => (true, string.Empty),
+
+            ModerationVerdict.Toxic =>
+                (false, $"The {fieldName} contains inappropriate content and cannot be accepted."),
+
+            // Deliberately distinct from the rejection message above: the caller's content may be
+            // perfectly fine, and telling someone their name is inappropriate when the checker was
+            // simply unreachable is both wrong and unhelpful.
+            _ => (false, $"We couldn't check the {fieldName} just now. Please try again in a moment.")
+        };
+
+    /// <summary>
+    /// Checks text for toxic content, and says whether it was refused or could not be checked.
+    /// </summary>
+    /// <remarks>
+    /// Fails closed: if the check cannot be performed, the answer is
+    /// <see cref="ModerationVerdict.Unavailable"/>, never <see cref="ModerationVerdict.Clean"/>.
+    /// Empty text is the one exception, since there is nothing to check.
     ///
     /// Text longer than Comprehend will take in one segment is split and sent as several, across
     /// as many requests as it takes. Before that, anything over 1 KB was sent as a single segment
@@ -49,13 +74,11 @@ internal class ContentModerationService : IContentModerationService
     /// true, however many times the organizer retried. A hat's additional information may be 2,000
     /// characters, so that was reachable from the edit screen.
     /// </remarks>
-    /// <param name="text">The text to validate</param>
-    /// <param name="fieldName">The name of the field being validated (for error messages)</param>
-    /// <returns>A tuple indicating if validation passed and an error message if it failed</returns>
-    public async Task<(bool IsValid, string ErrorMessage)> ValidateContentAsync(string text, string fieldName)
+    /// <param name="fieldName">What the text is, for the log line.</param>
+    public async Task<ModerationVerdict> ModerateAsync(string text, string fieldName)
     {
         if (string.IsNullOrWhiteSpace(text))
-            return (true, string.Empty);
+            return ModerationVerdict.Clean;
 
         try
         {
@@ -85,18 +108,16 @@ internal class ContentModerationService : IContentModerationService
             }
 
             if (toxicLabels.Count <= 0)
-                return (true, string.Empty);
+                return ModerationVerdict.Clean;
 
-            var labelNames = string.Join(", ", toxicLabels.Select(l => l.Name));
             _logger.LogWarning(
                 "Content moderation flagged {FieldName} with toxic content. Labels: {Labels}, Scores: {Scores}",
                 fieldName,
-                labelNames,
+                string.Join(", ", toxicLabels.Select(l => l.Name)),
                 string.Join(", ", toxicLabels.Select(l => l.Score))
             );
 
-            return (false, $"The {fieldName} contains inappropriate content and cannot be accepted.");
-
+            return ModerationVerdict.Toxic;
         }
         catch (Exception ex)
         {
@@ -106,10 +127,7 @@ internal class ContentModerationService : IContentModerationService
             // retries by the time an exception reaches us, so there is nothing left to wait for.
             _logger.LogError(ex, "Content moderation failed for {FieldName}; rejecting the request.", fieldName);
 
-            // Deliberately distinct from the rejection message below: the caller's content may be
-            // perfectly fine, and telling someone their name is inappropriate when the checker was
-            // simply unreachable is both wrong and unhelpful.
-            return (false, $"We couldn't check the {fieldName} just now. Please try again in a moment.");
+            return ModerationVerdict.Unavailable;
         }
     }
 

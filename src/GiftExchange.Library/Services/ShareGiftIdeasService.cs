@@ -149,13 +149,18 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         if (policyOutcome != GiftIdeaSubmissionOutcome.Shared)
             return policyOutcome;
 
-        var (isClean, _) = await _contentModerationService
-            .ValidateContentAsync(ideas, "gift ideas")
+        var verdict = await _contentModerationService
+            .ModerateAsync(ideas, "gift ideas")
             .ConfigureAwait(false);
 
-        return isClean
-            ? GiftIdeaSubmissionOutcome.Shared
-            : GiftIdeaSubmissionOutcome.RejectedInappropriateContent;
+        // An outage is still a refusal, since nothing unchecked is forwarded. It is told apart so
+        // the page says to try again rather than to reword something that may be perfectly fine.
+        return verdict switch
+        {
+            ModerationVerdict.Clean => GiftIdeaSubmissionOutcome.Shared,
+            ModerationVerdict.Toxic => GiftIdeaSubmissionOutcome.RejectedInappropriateContent,
+            _ => GiftIdeaSubmissionOutcome.RejectedModerationUnavailable
+        };
     }
 
     /// <summary>
