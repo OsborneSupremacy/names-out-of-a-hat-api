@@ -28,6 +28,22 @@ internal record ComposeShareIdeasFormRequest
     /// </summary>
     public required string Notice { get; init; }
 
-    /// <summary>Whether <see cref="Ideas"/> is something already shared, rather than a draft.</summary>
+    /// <summary>Whether <see cref="Ideas"/> is something already stored, rather than a draft.</summary>
     public required bool HasSharedBefore { get; init; }
+
+    /// <summary>
+    /// Whether the checkbox is ticked: hold this back until the person who drew them asks.
+    /// </summary>
+    /// <remarks>
+    /// Carried through a refused submission as well as a fresh form. An unticked box handed back
+    /// after a refusal would turn the retry into an immediate send, which is the one mistake here
+    /// that cannot be undone.
+    /// </remarks>
+    public required bool HoldUntilAsked { get; init; }
+
+    /// <summary>
+    /// Whether anything of theirs has ever gone out outright, which qualifies what holding something
+    /// back can promise.
+    /// </summary>
+    public required bool HasSharedOutrightBefore { get; init; }
 }

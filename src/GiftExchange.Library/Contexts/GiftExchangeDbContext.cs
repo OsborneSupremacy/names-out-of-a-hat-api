@@ -40,6 +40,8 @@ public sealed class GiftExchangeDbContext : DbContext
 
     public DbSet<GiftIdeaAskEntity> GiftIdeaAsks => Set<GiftIdeaAskEntity>();
 
+    public DbSet<GiftIdeaEnquiryEntity> GiftIdeaEnquiries => Set<GiftIdeaEnquiryEntity>();
+
     public DbSet<ContributedGiftIdeaEntity> ContributedGiftIdeas => Set<ContributedGiftIdeaEntity>();
 
     public DbSet<ParticipantEmailDeliveryEntity> ParticipantEmailDeliveries =>

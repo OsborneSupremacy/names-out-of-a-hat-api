@@ -178,6 +178,40 @@ public class EditParticipantAddressServiceTests
             .Should().Be(1, "the old one was revoked and a fresh one issued for the resend");
     }
 
+    /// <summary>
+    /// A correction closes off credentials, and an enquiry is not one.
+    /// </summary>
+    /// <remarks>
+    /// Nothing can be reached with it: it names two participants and authorises nobody to write
+    /// anything. What it does say is that somebody asked for ideas about their pick, and that is still
+    /// true after their address is fixed — the person who asked is the same person, at the address
+    /// they actually read. Deleting it would only mean the same held submission being sent again the
+    /// next time they asked. What already went to the wrong inbox cannot be recalled by any of this.
+    /// </remarks>
+    [Fact]
+    public async Task TheOldAddress_DoesNotTakeWhatSomebodyAskedForWithIt()
+    {
+        // arrange
+        var exchange = await SeedAsync(HatStatus.InvitationsSent);
+        var ids = await _provider.GetParticipantIdsByEmailAsync(exchange.HatId);
+
+        await _provider.RecordGiftIdeaEnquiryAsync(new RecordGiftIdeaEnquiryRequest
+        {
+            AskerParticipantId = ids[exchange.OtherEmail],
+            SubjectParticipantId = exchange.TargetParticipantId
+        });
+
+        // act
+        await _sut.EditParticipantAddressAsync(Request(exchange, "fixed@example.com"));
+
+        // assert
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        (await context.GiftIdeaEnquiries.AnyAsync(row =>
+                row.SubjectParticipantId == exchange.TargetParticipantId))
+            .Should().BeTrue();
+    }
+
     private async Task<Guid> AskIdForAsync(string token)
     {
         await using var context = await _contextFactory.CreateDbContextAsync();

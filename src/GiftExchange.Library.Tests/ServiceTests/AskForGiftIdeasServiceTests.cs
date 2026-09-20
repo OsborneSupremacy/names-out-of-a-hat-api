@@ -511,6 +511,188 @@ public class AskForGiftIdeasServiceTests
         response.Headers["Content-Type"].Should().Be("text/html; charset=utf-8");
     }
 
+    [Fact]
+    public async Task Post_RecordsThatTheAskerAskedAboutTheirPick()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, exchange.BetaId), new FakeLambdaContext());
+
+        // assert: written down because Beta may write ideas to be held long after this, and the
+        // share page has to be able to tell that somebody is waiting for them.
+        await using var context = _contextFactory.CreateDbContext();
+
+        var enquiry = await context.GiftIdeaEnquiries
+            .Where(row => row.AskerParticipantId == exchange.AlphaId)
+            .SingleAsync();
+
+        enquiry.SubjectParticipantId.Should().Be(exchange.BetaId);
+        enquiry.RequestedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public async Task Post_GivenTheirPickHasHeldIdeas_SendsThemToTheAsker()
+    {
+        // arrange: Beta wrote ideas down and asked us to wait until somebody wanted them.
+        var exchange = await SeedAsync();
+        await HoldAsync(exchange.BetaId, "A cast iron skillet");
+
+        // act
+        var response = await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, exchange.BetaId), new FakeLambdaContext());
+
+        // assert
+        var release = SentMessages()
+            .Should().ContainSingle(message => Mentions(message, "A cast iron skillet"))
+            .Subject;
+
+        release.To.Mailboxes.Single().Address.Should().Be(exchange.AlphaEmail);
+        release.Subject.Should().Be("Beta shared gift ideas with you");
+        release.HtmlBody.Should().Contain("had already written down");
+
+        // Said on the page too: the email would otherwise look like an answer that came back
+        // impossibly fast.
+        response.Body.Should().Contain("had already written down some gift ideas");
+
+        // Beta is still asked, and told nothing about what was passed on.
+        var ask = SentMessages().Single(message => message.To.Mailboxes.Single().Address == exchange.BetaEmail);
+
+        ask.HtmlBody.Should().NotContain("A cast iron skillet");
+    }
+
+    [Fact]
+    public async Task Post_GivenOnlyOtherPeopleAsked_StillSendsTheHeldIdeas()
+    {
+        // arrange: the case the feature exists for. Alpha would rather not tip Beta off, so they ask
+        // Gamma instead — and Beta's own words are what Beta wanted them to have.
+        var exchange = await SeedAsync();
+        await HoldAsync(exchange.BetaId, "A cast iron skillet");
+
+        // act
+        await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, exchange.GammaId), new FakeLambdaContext());
+
+        // assert
+        SentMessages().Should().ContainSingle(message => Mentions(message, "A cast iron skillet"))
+            .Which.To.Mailboxes.Single().Address.Should().Be(exchange.AlphaEmail);
+
+        // Beta hears nothing at all. Being told would be being told that whoever holds their name has
+        // been asking about them, which is what asking Gamma instead was for.
+        SentMessages().Should().NotContain(message =>
+            message.To.Mailboxes.Single().Address == exchange.BetaEmail);
+    }
+
+    [Fact]
+    public async Task Post_AskingTwice_SendsTheHeldIdeasOnce()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        await HoldAsync(exchange.BetaId, "A cast iron skillet");
+
+        // act
+        await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, exchange.BetaId), new FakeLambdaContext());
+
+        await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, exchange.GammaId), new FakeLambdaContext());
+
+        // assert: the second round finds the same text already passed on and leaves it alone.
+        SentMessages().Where(message => Mentions(message, "A cast iron skillet"))
+            .Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task Post_GivenEveryAskIsThrottled_StillSendsTheHeldIdeas()
+    {
+        // arrange: the throttle governs how often somebody may be mailed a question. It says nothing
+        // about ideas already written down for whoever asked.
+        _throttle.TryReserveAskSlotAsync(Arg.Any<ReserveAskSlotRequest>())
+            .Returns(ReserveSlotResponses.RefusedSince(DateTimeOffset.UtcNow.AddDays(-2)));
+
+        var exchange = await SeedAsync();
+        await HoldAsync(exchange.BetaId, "A cast iron skillet");
+
+        // act
+        await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, exchange.BetaId), new FakeLambdaContext());
+
+        // assert
+        SentMessages().Should().ContainSingle(message => Mentions(message, "A cast iron skillet"));
+
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.GiftIdeaEnquiries.AnyAsync(row => row.AskerParticipantId == exchange.AlphaId))
+            .Should().BeTrue("asking is what this records, not whether an email went out");
+    }
+
+    [Fact]
+    public async Task Post_GivenTheirPickSharedOutright_SendsNothingBeyondTheAsk()
+    {
+        // arrange: Beta shared without holding anything back, so Alpha already has it. Asking must
+        // not deliver it a second time.
+        var exchange = await SeedAsync();
+        await ShareOutrightAsync(exchange.BetaId, "A cast iron skillet");
+
+        // act
+        var response = await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, exchange.BetaId), new FakeLambdaContext());
+
+        // assert
+        SentMessages().Should().ContainSingle()
+            .Which.To.Mailboxes.Single().Address.Should().Be(exchange.BetaEmail);
+
+        response.Body.Should().NotContain("had already written down");
+    }
+
+    [Fact]
+    public async Task Post_GivenNobodyChosen_RecordsNothing()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        await HoldAsync(exchange.BetaId, "A cast iron skillet");
+
+        // act: ticking nobody is a slip, and a slip is not an ask.
+        var response = await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken), new FakeLambdaContext());
+
+        // assert
+        response.Body.Should().Contain("Choose at least one person to ask.");
+        _sent.Should().BeEmpty();
+
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.GiftIdeaEnquiries.AnyAsync(row => row.AskerParticipantId == exchange.AlphaId))
+            .Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Whether a message's body carries this text. <c>HtmlBody</c> is nullable and every message
+    /// these tests look at has one, so the check belongs here rather than in each assertion.
+    /// </summary>
+    private static bool Mentions(MimeMessage message, string text) =>
+        message.HtmlBody?.Contains(text, StringComparison.Ordinal) == true;
+
+    /// <summary>A submission Beta wrote and asked us to hold until somebody asks for it.</summary>
+    private Task<Guid> HoldAsync(Guid participantId, string ideas) =>
+        _provider.AddGiftIdeaAsync(new AddGiftIdeaRequest
+        {
+            ParticipantId = participantId,
+            Ideas = ideas,
+            HoldUntilAsked = true
+        });
+
+    /// <summary>A submission already sent to whoever drew them at the time it was written.</summary>
+    private Task<Guid> ShareOutrightAsync(Guid participantId, string ideas) =>
+        _provider.AddGiftIdeaAsync(new AddGiftIdeaRequest
+        {
+            ParticipantId = participantId,
+            Ideas = ideas,
+            HoldUntilAsked = false
+        });
+
     /// <summary>
     /// A request to /ask/{token}, with the chosen participants posted as the unscripted form on the
     /// page posts them: one repeated field, url-encoded.

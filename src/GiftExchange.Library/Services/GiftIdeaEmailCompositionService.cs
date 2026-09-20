@@ -154,9 +154,39 @@ public class GiftIdeaEmailCompositionService
         Wrap([
             $"<b>{HttpUtility.HtmlEncode(senderName)}</b>, whose name you picked in {HttpUtility.HtmlEncode(GiftExchangeNaming.Describe(hatName))}, shared some gift ideas with you:",
             Quote(ideas),
-            "<i>You're the only person seeing this. Please don't reply to this email — your reply would reveal that you have their name.</i>",
+            ForwardPrivacyNote,
             BuildLinkDisclaimer()
         ]);
+
+    /// <summary>
+    /// Carries ideas somebody wrote down earlier and asked us to hold until they were wanted.
+    /// </summary>
+    /// <remarks>
+    /// Says that they were written in advance, because the alternative reads as though they had just
+    /// been typed in reply — and a list written weeks ago is worth knowing the age of. It says nothing
+    /// about the ask that released it beyond the fact that the reader is the one who made it, which
+    /// they know: nobody else can release these.
+    ///
+    /// Identical to <see cref="ComposeForward"/> in everything that matters to the reader, the
+    /// no-reply line included. The sender is named for the same reason: whoever gets this drew them.
+    /// </remarks>
+    public string ComposeHeldForward(string senderName, string hatName, string ideas) =>
+        Wrap([
+            $"<b>{HttpUtility.HtmlEncode(senderName)}</b>, whose name you picked in {HttpUtility.HtmlEncode(GiftExchangeNaming.Describe(hatName))}, had already written down some gift ideas, ready for whenever somebody asked:",
+            Quote(ideas),
+            ForwardPrivacyNote,
+            BuildLinkDisclaimer()
+        ]);
+
+    /// <summary>
+    /// The line every forward of somebody's own words carries.
+    /// </summary>
+    /// <remarks>
+    /// One copy, because the two forwards make the same promise and a promise spelled twice is one
+    /// that can drift.
+    /// </remarks>
+    private const string ForwardPrivacyNote =
+        "<i>You're the only person seeing this. Please don't reply to this email — your reply would reveal that you have their name.</i>";
 
     /// <summary>
     /// Sent to the person somebody has asked for gift ideas.

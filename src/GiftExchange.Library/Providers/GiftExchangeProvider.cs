@@ -31,6 +31,9 @@ public class GiftExchangeProvider
     /// <summary>One delivery row per SES message id.</summary>
     private const string DeliveryMessageIndex = "uq_participant_email_delivery_message";
 
+    /// <summary>One record per giver of the fact that they asked for ideas about their pick.</summary>
+    private const string GiftIdeaEnquiryPairIndex = "uq_gift_idea_enquiry_asker_subject";
+
     private readonly IDbContextFactory<GiftExchangeDbContext> _contextFactory;
 
     private readonly ILogger<GiftExchangeProvider> _logger;
@@ -648,6 +651,13 @@ public class GiftExchangeProvider
 
         await context.GiftIdeaAsks
             .Where(ask => askIds.Contains(ask.GiftIdeaAskId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+
+        // Who asked for ideas about their pick. The asker alone reaches all of them, for the reason
+        // the asks above give: both participants an enquiry names belong to the hat that is going.
+        await context.GiftIdeaEnquiries
+            .Where(enquiry => participantIds.Contains(enquiry.AskerParticipantId))
             .ExecuteDeleteAsync()
             .ConfigureAwait(false);
 
@@ -1780,10 +1790,21 @@ public class GiftExchangeProvider
         // Who drew the sender, which is the inverse of a pick and so cannot be reached by following
         // one. Read separately rather than joined above: this is the one part that may legitimately
         // find nothing, and an inner join would have discarded the whole match along with it.
+        //
+        // Ordered, because an organizer editing picks can leave two participants holding the same
+        // name. Which of them receives a forward is arbitrary either way, but an arbitrary answer
+        // here would also decide whether a held submission is released, and a decision of that kind
+        // should at least be the same one every time it is made.
         var giver = await context.Participants
             .AsNoTracking()
             .Where(participant => participant.PickedRecipientParticipantId == match.ParticipantId)
-            .Select(participant => new { participant.Person.Name, participant.Person.Email })
+            .OrderBy(participant => participant.ParticipantId)
+            .Select(participant => new
+            {
+                participant.ParticipantId,
+                participant.Person.Name,
+                participant.Person.Email
+            })
             .FirstOrDefaultAsync()
             .ConfigureAwait(false);
 
@@ -1802,6 +1823,7 @@ public class GiftExchangeProvider
             Giver = giver is null
                 ? Persons.Empty
                 : new Person { Name = giver.Name, Email = giver.Email },
+            GiverParticipantId = giver?.ParticipantId ?? Guid.Empty,
             AskId = Guid.Empty
         });
     }
@@ -1873,6 +1895,7 @@ public class GiftExchangeProvider
                     HelperPickEmail = row.helperPick.Person.Email,
                     SubjectName = row.subject.Person.Name,
                     SubjectEmail = row.subject.Person.Email,
+                    AskerParticipantId = asker.ParticipantId,
                     AskerName = asker.Person.Name,
                     AskerEmail = asker.Person.Email
                 })
@@ -1898,6 +1921,7 @@ public class GiftExchangeProvider
             // The asker. They drew the subject, which is why they asked, so this is the same person
             // the ordinary path finds by looking for whoever holds the subject's name.
             Giver = new Person { Name = match.AskerName, Email = match.AskerEmail },
+            GiverParticipantId = match.AskerParticipantId,
             AskId = match.GiftIdeaAskId
         });
     }
@@ -2079,16 +2103,23 @@ public class GiftExchangeProvider
     /// Appends a submission. Nothing is overwritten: the newest row for a participant is the one
     /// that counts, and the ones before it stay for the reasons gift_idea--0001.sql gives.
     /// </summary>
-    public async Task<Guid> AddGiftIdeaAsync(Guid participantId, string ideas)
+    /// <remarks>
+    /// Whether it is held back is written here and never touched again. A row that says it was held
+    /// keeps saying so after it has been passed on, for the reason
+    /// <see cref="GiftIdeaEntity.HoldUntilAsked"/> gives; what has been passed on is
+    /// <see cref="GiftIdeaEnquiryEntity.ReleasedAt"/>'s business.
+    /// </remarks>
+    internal async Task<Guid> AddGiftIdeaAsync(AddGiftIdeaRequest request)
     {
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
         var giftIdea = new GiftIdeaEntity
         {
             GiftIdeaId = Guid.CreateVersion7(),
-            ParticipantId = participantId,
-            Ideas = ideas,
+            ParticipantId = request.ParticipantId,
+            Ideas = request.Ideas,
             CreatedAt = DateTimeOffset.UtcNow,
+            HoldUntilAsked = request.HoldUntilAsked,
             InboundMessageId = string.Empty
         };
 
@@ -2100,23 +2131,201 @@ public class GiftExchangeProvider
     }
 
     /// <summary>
-    /// What a participant most recently shared about themselves, or the empty string if they have
-    /// shared nothing.
+    /// What a participant most recently shared about themselves, whether it is being held back, and
+    /// whether anything of theirs has ever gone out outright.
     /// </summary>
     /// <remarks>
     /// Newest by <c>created_at</c>, which is the value gift_idea--0001.sql says decides the winner.
+    /// The flag is read off that same row rather than summarised over all of them: sharing outright
+    /// after holding something back replaces what was held.
+    ///
+    /// The second read is what lets the page keep its promise honestly. "These will never be seen by
+    /// anyone" is untrue for somebody who has already shared once without holding back, because
+    /// nothing recalls an email. Read from their own submissions, never from an enquiry, which would
+    /// leak that their giver had asked.
     /// </remarks>
-    public async Task<string> GetLatestGiftIdeaAsync(Guid participantId)
+    internal async Task<GetLatestGiftIdeaResponse> GetLatestGiftIdeaAsync(Guid participantId)
     {
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
-        return await context.GiftIdeas
+        var latest = await context.GiftIdeas
             .AsNoTracking()
             .Where(giftIdea => giftIdea.ParticipantId == participantId)
             .OrderByDescending(giftIdea => giftIdea.CreatedAt)
-            .Select(giftIdea => giftIdea.Ideas)
+            .Select(giftIdea => new { giftIdea.Ideas, giftIdea.HoldUntilAsked, giftIdea.CreatedAt })
             .FirstOrDefaultAsync()
-            .ConfigureAwait(false) ?? string.Empty;
+            .ConfigureAwait(false);
+
+        var sharedOutright = await context.GiftIdeas
+            .AsNoTracking()
+            .AnyAsync(giftIdea => giftIdea.ParticipantId == participantId && !giftIdea.HoldUntilAsked)
+            .ConfigureAwait(false);
+
+        return new GetLatestGiftIdeaResponse
+        {
+            Ideas = latest?.Ideas ?? string.Empty,
+            HoldUntilAsked = latest?.HoldUntilAsked ?? false,
+            CreatedAt = latest?.CreatedAt ?? DateTimeOffset.MinValue,
+            HasSharedOutrightBefore = sharedOutright
+        };
+    }
+
+    /// <summary>
+    /// Whether a participant has asked for gift ideas about the person whose name they drew.
+    /// </summary>
+    /// <remarks>
+    /// The question the share page asks before passing on a held submission, and the only thing that
+    /// releases one. An answer of false is why nothing is sent, and it is never shown to the writer
+    /// either way: telling them would be telling them their giver had been asking about them.
+    /// </remarks>
+    internal async Task<bool> HasAskedForGiftIdeasAsync(HasAskedForGiftIdeasRequest request)
+    {
+        // Neither id can match a real row, and a pick that does not exist cannot have been asked
+        // about. Stated outright rather than left to the query to discover.
+        if (request.AskerParticipantId == Guid.Empty || request.SubjectParticipantId == Guid.Empty)
+            return false;
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        return await context.GiftIdeaEnquiries
+            .AsNoTracking()
+            .AnyAsync(enquiry =>
+                enquiry.AskerParticipantId == request.AskerParticipantId
+                && enquiry.SubjectParticipantId == request.SubjectParticipantId)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes down that a participant asked for gift ideas about their pick, if it is not written
+    /// down already, and reports the enquiry as it now stands.
+    /// </summary>
+    /// <remarks>
+    /// One row per pair. Asking again is still the same standing fact, so nothing is appended and
+    /// <see cref="GiftIdeaEnquiryEntity.RequestedAt"/> stays the first time.
+    ///
+    /// The read and the insert share a transaction, because two rounds of asking seconds apart would
+    /// otherwise both find nothing and both write. A concurrent insert that beats this one still
+    /// says exactly what this call would have said, so the violation is caught and the row that won
+    /// is read instead.
+    /// </remarks>
+    internal async Task<RecordGiftIdeaEnquiryResponse> RecordGiftIdeaEnquiryAsync(RecordGiftIdeaEnquiryRequest request)
+    {
+        try
+        {
+            return await RecordGiftIdeaEnquiryCoreAsync(request).ConfigureAwait(false);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolationOf(exception, GiftIdeaEnquiryPairIndex))
+        {
+            var existing = await FindGiftIdeaEnquiryAsync(
+                    request.AskerParticipantId,
+                    request.SubjectParticipantId)
+                .ConfigureAwait(false);
+
+            // Defensive. The row the violation named has to be there, and if it somehow is not, the
+            // safe answer is one that releases nothing rather than one that invents a date.
+            return existing ?? new RecordGiftIdeaEnquiryResponse
+            {
+                RequestedAt = DateTimeOffset.UtcNow,
+                ReleasedAt = DateTimeOffset.UtcNow
+            };
+        }
+    }
+
+    private async Task<RecordGiftIdeaEnquiryResponse> RecordGiftIdeaEnquiryCoreAsync(
+        RecordGiftIdeaEnquiryRequest request
+    )
+    {
+        RecordGiftIdeaEnquiryResponse? recorded = null;
+
+        await InTransactionAsync(async context =>
+        {
+            // Reset, because InTransactionAsync replays the whole delegate on a fresh context.
+            recorded = null;
+
+            var existing = await context.GiftIdeaEnquiries
+                .AsNoTracking()
+                .Where(enquiry =>
+                    enquiry.AskerParticipantId == request.AskerParticipantId
+                    && enquiry.SubjectParticipantId == request.SubjectParticipantId)
+                .OrderBy(enquiry => enquiry.RequestedAt)
+                .Select(enquiry => new RecordGiftIdeaEnquiryResponse
+                {
+                    RequestedAt = enquiry.RequestedAt,
+                    ReleasedAt = enquiry.ReleasedAt
+                })
+                .FirstOrDefaultAsync()
+                .ConfigureAwait(false);
+
+            if (existing is not null)
+            {
+                recorded = existing;
+                return;
+            }
+
+            var requestedAt = DateTimeOffset.UtcNow;
+
+            context.GiftIdeaEnquiries.Add(new GiftIdeaEnquiryEntity
+            {
+                GiftIdeaEnquiryId = Guid.CreateVersion7(),
+                AskerParticipantId = request.AskerParticipantId,
+                SubjectParticipantId = request.SubjectParticipantId,
+                RequestedAt = requestedAt,
+                // Nothing has been passed on against an enquiry that has only just been made.
+                ReleasedAt = DateTimeOffset.MinValue
+            });
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+
+            recorded = new RecordGiftIdeaEnquiryResponse
+            {
+                RequestedAt = requestedAt,
+                ReleasedAt = DateTimeOffset.MinValue
+            };
+        }).ConfigureAwait(false);
+
+        return recorded!;
+    }
+
+    /// <summary>
+    /// Stamps when a held submission was passed on, so the next ask does not send it again.
+    /// </summary>
+    /// <remarks>
+    /// After the send rather than before it: mail from here cannot report failure, so a release that
+    /// never arrived is worth repeating and one that did is not.
+    /// </remarks>
+    internal async Task MarkGiftIdeaEnquiryReleasedAsync(MarkGiftIdeaEnquiryReleasedRequest request)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        await context.GiftIdeaEnquiries
+            .Where(enquiry =>
+                enquiry.AskerParticipantId == request.AskerParticipantId
+                && enquiry.SubjectParticipantId == request.SubjectParticipantId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(enquiry => enquiry.ReleasedAt, request.ReleasedAt))
+            .ConfigureAwait(false);
+    }
+
+    private async Task<RecordGiftIdeaEnquiryResponse?> FindGiftIdeaEnquiryAsync(
+        Guid askerParticipantId,
+        Guid subjectParticipantId
+    )
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        return await context.GiftIdeaEnquiries
+            .AsNoTracking()
+            .Where(enquiry =>
+                enquiry.AskerParticipantId == askerParticipantId
+                && enquiry.SubjectParticipantId == subjectParticipantId)
+            .OrderBy(enquiry => enquiry.RequestedAt)
+            .Select(enquiry => new RecordGiftIdeaEnquiryResponse
+            {
+                RequestedAt = enquiry.RequestedAt,
+                ReleasedAt = enquiry.ReleasedAt
+            })
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -2511,6 +2720,15 @@ public class GiftExchangeProvider
 
             await context.GiftIdeaAsks
                 .Where(ask => askIds.Contains(ask.GiftIdeaAskId))
+                .ExecuteDeleteAsync()
+                .ConfigureAwait(false);
+
+            // Enquiries in both directions, unlike the hat sweep, which can rely on the whole
+            // exchange going at once. Theirs, which now name nobody; and everybody else's about
+            // them, which would otherwise hold a submission open for a participant who is gone.
+            await context.GiftIdeaEnquiries
+                .Where(enquiry => enquiry.AskerParticipantId == participantId
+                                  || enquiry.SubjectParticipantId == participantId)
                 .ExecuteDeleteAsync()
                 .ConfigureAwait(false);
 

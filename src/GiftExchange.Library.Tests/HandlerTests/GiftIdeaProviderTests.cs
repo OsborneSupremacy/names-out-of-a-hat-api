@@ -126,6 +126,10 @@ public class GiftIdeaProviderTests
         // Gamma drew Alpha, so Gamma is the one person these ideas are for.
         route.Giver.Email.Should().Be(exchange.Gamma.Email);
         route.Giver.Name.Should().Be(exchange.Gamma.Name);
+
+        // Their row too, because whether a held submission is owed to anybody is a fact about a pair
+        // of participants rather than about an address.
+        route.GiverParticipantId.Should().Be(exchange.Gamma.ParticipantId);
     }
 
     [Fact]
@@ -146,6 +150,7 @@ public class GiftIdeaProviderTests
         found.Should().BeTrue();
         route.Sender.Email.Should().Be(alpha.Email);
         route.Giver.Email.Should().BeEmpty("nobody has drawn them");
+        route.GiverParticipantId.Should().Be(Guid.Empty, "and so there is nobody who can have asked");
         route.SenderPickedRecipient.Name.Should().BeEmpty("they have not drawn anybody either");
     }
 
@@ -185,8 +190,8 @@ public class GiftIdeaProviderTests
         var exchange = await SeedExchangeAsync();
 
         // act
-        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "A cast iron skillet");
-        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "Actually, a bread book");
+        await ShareOutrightAsync(exchange.Alpha.ParticipantId, "A cast iron skillet");
+        await ShareOutrightAsync(exchange.Alpha.ParticipantId, "Actually, a bread book");
 
         // assert
         await using var context = _contextFactory.CreateDbContext();
@@ -208,7 +213,7 @@ public class GiftIdeaProviderTests
         // arrange
         var exchange = await SeedExchangeAsync();
         await _sut.IssueGiftIdeaTokensAsync(exchange.HatId);
-        await _sut.AddGiftIdeaAsync(exchange.Alpha.ParticipantId, "A scarf");
+        await ShareOutrightAsync(exchange.Alpha.ParticipantId, "A scarf");
 
         // act
         await _sut.DeleteParticipantAsync(exchange.OrganizerEmail, exchange.HatId, exchange.Alpha.Email);
@@ -235,7 +240,7 @@ public class GiftIdeaProviderTests
         await _sut.IssueGiftIdeaTokensAsync(exchange.HatId);
 
         foreach (var participantId in exchange.ParticipantIds)
-            await _sut.AddGiftIdeaAsync(participantId, "Something");
+            await ShareOutrightAsync(participantId, "Something");
 
         // act
         await _sut.DeleteHatAsync(new DeleteHatRequest
@@ -300,6 +305,228 @@ public class GiftIdeaProviderTests
 
         return new SeededExchange(hat.HatId, hat.OrganizerEmail, alpha, beta, gamma);
     }
+
+    [Fact]
+    public async Task FindGiftIdeaContributionRouteAsync_MakesTheAskerTheGiver()
+    {
+        // arrange: Alpha drew Beta and asks Gamma what Beta might like.
+        var exchange = await SeedExchangeAsync();
+
+        var askToken = await _sut.IssueGiftIdeaAskAsync(
+            exchange.Alpha.ParticipantId, exchange.Gamma.ParticipantId, exchange.Beta.ParticipantId);
+
+        // act
+        var (found, route) = await _sut.FindGiftIdeaContributionRouteAsync(SecretToken.Hash(askToken));
+
+        // assert: the asker is the giver by a shorter route -- they asked because they drew the
+        // subject -- and the id is theirs, not the helper's.
+        found.Should().BeTrue();
+        route.Giver.Email.Should().Be(exchange.Alpha.Email);
+        route.GiverParticipantId.Should().Be(exchange.Alpha.ParticipantId);
+        route.ParticipantId.Should().Be(exchange.Gamma.ParticipantId);
+    }
+
+    [Fact]
+    public async Task GetLatestGiftIdeaAsync_ReportsTheNewestRowsOwnChoice()
+    {
+        // arrange: held first, then shared outright. Sharing outright replaces what was held.
+        var exchange = await SeedExchangeAsync();
+        await HoldAsync(exchange.Alpha.ParticipantId, "A cast iron skillet");
+        await ShareOutrightAsync(exchange.Alpha.ParticipantId, "Actually, a bread book");
+
+        // act
+        var latest = await _sut.GetLatestGiftIdeaAsync(exchange.Alpha.ParticipantId);
+
+        // assert
+        latest.Ideas.Should().Be("Actually, a bread book");
+        latest.HoldUntilAsked.Should().BeFalse();
+        latest.HasSharedOutrightBefore.Should().BeTrue();
+        latest.CreatedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public async Task GetLatestGiftIdeaAsync_GivenOnlyHeldSubmissions_SaysNothingWentOutOutright()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+        await HoldAsync(exchange.Alpha.ParticipantId, "A cast iron skillet");
+        await HoldAsync(exchange.Alpha.ParticipantId, "Actually, a bread book");
+
+        // act
+        var latest = await _sut.GetLatestGiftIdeaAsync(exchange.Alpha.ParticipantId);
+
+        // assert: which is what lets the page promise that nobody has seen these.
+        latest.Ideas.Should().Be("Actually, a bread book");
+        latest.HoldUntilAsked.Should().BeTrue();
+        latest.HasSharedOutrightBefore.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetLatestGiftIdeaAsync_GivenNothingShared_IsEmptyRatherThanNothing()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+
+        // act
+        var latest = await _sut.GetLatestGiftIdeaAsync(exchange.Alpha.ParticipantId);
+
+        // assert
+        latest.Ideas.Should().BeEmpty();
+        latest.HoldUntilAsked.Should().BeFalse();
+        latest.CreatedAt.Should().Be(DateTimeOffset.MinValue);
+    }
+
+    [Fact]
+    public async Task RecordGiftIdeaEnquiryAsync_AskingTwice_KeepsOneRowAndTheFirstDate()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+
+        // act
+        var first = await AskedAboutAsync(exchange.Alpha.ParticipantId, exchange.Beta.ParticipantId);
+        var second = await AskedAboutAsync(exchange.Alpha.ParticipantId, exchange.Beta.ParticipantId);
+
+        // assert: asking again is the same standing fact, so nothing is appended and the date stays
+        // the first one. Nothing downstream reads it, but a date that moved would be a claim.
+        second.RequestedAt.Should().Be(first.RequestedAt);
+        second.ReleasedAt.Should().Be(DateTimeOffset.MinValue);
+
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.GiftIdeaEnquiries.CountAsync(row =>
+                row.AskerParticipantId == exchange.Alpha.ParticipantId))
+            .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RecordGiftIdeaEnquiryAsync_GivenADifferentSubject_IsADifferentEnquiry()
+    {
+        // arrange: the same asker, after an organizer edited who they drew.
+        var exchange = await SeedExchangeAsync();
+
+        // act
+        await AskedAboutAsync(exchange.Alpha.ParticipantId, exchange.Beta.ParticipantId);
+        await AskedAboutAsync(exchange.Alpha.ParticipantId, exchange.Gamma.ParticipantId);
+
+        // assert: a row naming a pick they no longer hold releases nothing, which is why the subject
+        // is recorded rather than followed back through the draw.
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.GiftIdeaEnquiries.CountAsync(row =>
+                row.AskerParticipantId == exchange.Alpha.ParticipantId))
+            .Should().Be(2);
+    }
+
+    [Fact]
+    public async Task MarkGiftIdeaEnquiryReleasedAsync_StampsTheOneEnquiryAndNobodyElses()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+        await AskedAboutAsync(exchange.Alpha.ParticipantId, exchange.Beta.ParticipantId);
+        await AskedAboutAsync(exchange.Beta.ParticipantId, exchange.Gamma.ParticipantId);
+
+        var releasedAt = DateTimeOffset.UtcNow;
+
+        // act
+        await _sut.MarkGiftIdeaEnquiryReleasedAsync(new MarkGiftIdeaEnquiryReleasedRequest
+        {
+            AskerParticipantId = exchange.Alpha.ParticipantId,
+            SubjectParticipantId = exchange.Beta.ParticipantId,
+            ReleasedAt = releasedAt
+        });
+
+        // assert
+        await using var context = _contextFactory.CreateDbContext();
+
+        var stamped = await context.GiftIdeaEnquiries
+            .Where(row => row.AskerParticipantId == exchange.Alpha.ParticipantId)
+            .Select(row => row.ReleasedAt)
+            .SingleAsync();
+
+        stamped.Should().BeCloseTo(releasedAt, TimeSpan.FromMilliseconds(1));
+
+        (await context.GiftIdeaEnquiries
+                .Where(row => row.AskerParticipantId == exchange.Beta.ParticipantId)
+                .Select(row => row.ReleasedAt)
+                .SingleAsync())
+            .Should().Be(DateTimeOffset.MinValue, "one release is not another");
+
+        // And reading it back reports the stamp, which is what stops a later ask sending the same
+        // text again.
+        (await AskedAboutAsync(exchange.Alpha.ParticipantId, exchange.Beta.ParticipantId))
+            .ReleasedAt.Should().BeCloseTo(releasedAt, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public async Task DeleteParticipantAsync_TakesTheEnquiriesNamingThemInEitherRole()
+    {
+        // arrange: one enquiry they made, and one somebody else made about them.
+        var exchange = await SeedExchangeAsync();
+        await AskedAboutAsync(exchange.Alpha.ParticipantId, exchange.Beta.ParticipantId);
+        await AskedAboutAsync(exchange.Gamma.ParticipantId, exchange.Alpha.ParticipantId);
+
+        // act
+        await _sut.DeleteParticipantAsync(exchange.OrganizerEmail, exchange.HatId, exchange.Alpha.Email);
+
+        // assert: an enquiry about somebody who has left would hold a submission open for a
+        // participant who is not there.
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.GiftIdeaEnquiries.AnyAsync(row =>
+                row.AskerParticipantId == exchange.Alpha.ParticipantId
+                || row.SubjectParticipantId == exchange.Alpha.ParticipantId))
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DeleteHatAsync_TakesEveryEnquiryInItWithIt()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+        await AskedAboutAsync(exchange.Alpha.ParticipantId, exchange.Beta.ParticipantId);
+        await AskedAboutAsync(exchange.Beta.ParticipantId, exchange.Gamma.ParticipantId);
+
+        // act
+        await _sut.DeleteHatAsync(new DeleteHatRequest
+        {
+            HatId = exchange.HatId,
+            OrganizerEmail = exchange.OrganizerEmail
+        });
+
+        // assert: the asker alone reaches all of them, because both participants an enquiry names
+        // belong to the exchange that is going.
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.GiftIdeaEnquiries.AnyAsync(row =>
+                exchange.ParticipantIds.Contains(row.AskerParticipantId)))
+            .Should().BeFalse();
+    }
+
+    /// <summary>One participant having asked for gift ideas about another.</summary>
+    private Task<RecordGiftIdeaEnquiryResponse> AskedAboutAsync(Guid askerParticipantId, Guid subjectParticipantId) =>
+        _sut.RecordGiftIdeaEnquiryAsync(new RecordGiftIdeaEnquiryRequest
+        {
+            AskerParticipantId = askerParticipantId,
+            SubjectParticipantId = subjectParticipantId
+        });
+
+    /// <summary>A submission shared outright, which is what these arrangements mean.</summary>
+    private Task<Guid> ShareOutrightAsync(Guid participantId, string ideas) =>
+        _sut.AddGiftIdeaAsync(new AddGiftIdeaRequest
+        {
+            ParticipantId = participantId,
+            Ideas = ideas,
+            HoldUntilAsked = false
+        });
+
+    /// <summary>A submission held back until the person who drew them asks for ideas.</summary>
+    private Task<Guid> HoldAsync(Guid participantId, string ideas) =>
+        _sut.AddGiftIdeaAsync(new AddGiftIdeaRequest
+        {
+            ParticipantId = participantId,
+            Ideas = ideas,
+            HoldUntilAsked = true
+        });
 
     private sealed record SeededParticipant(Guid ParticipantId, string Name, string Email);
 

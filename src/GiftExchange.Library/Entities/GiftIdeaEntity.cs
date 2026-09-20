@@ -35,6 +35,19 @@ public class GiftIdeaEntity
     public required DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
+    /// Whether this was written to be held back until the person who drew the writer asks for gift
+    /// ideas, rather than sent to them the moment it arrived.
+    /// </summary>
+    /// <remarks>
+    /// Set when the row is written and never changed afterwards, which suits a table nothing edits
+    /// in place. Clearing it on release would untick the box the next time the writer opened the
+    /// form, and so tell them their giver had been asking about them — the one thing the Ask exists
+    /// to avoid. Whether anything has been passed on lives on <see cref="GiftIdeaEnquiryEntity"/>
+    /// instead.
+    /// </remarks>
+    public required bool HoldUntilAsked { get; set; }
+
+    /// <summary>
     /// The SES message id this arrived in, from when gift ideas were shared by email. Always the
     /// empty string now that they are shared from a page. Kept because DSQL cannot drop the column.
     /// </summary>

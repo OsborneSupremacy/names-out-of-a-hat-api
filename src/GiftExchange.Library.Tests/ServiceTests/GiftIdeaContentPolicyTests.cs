@@ -143,7 +143,8 @@ public class GiftIdeaContentPolicyTests
         // API blocks any body over 8 KB, and the form posts multipart, so the text travels raw.
         var ideas = string.Concat(Enumerable.Repeat(unit, GiftIdeaContentPolicy.MaxLength / unit.Length));
 
-        // assert: with half a kilobyte to spare for the multipart boundaries and part headers.
+        // assert: with half a kilobyte to spare for the multipart boundaries and the part headers of
+        // both fields -- the text, and the checkbox that holds it back.
         Encoding.UTF8.GetByteCount(ideas).Should().BeLessThanOrEqualTo(8 * 1024 - 512);
     }
 

@@ -122,8 +122,8 @@ public class ShareGiftIdeasServiceTests
     {
         // arrange
         var exchange = await SeedAsync();
-        await _provider.AddGiftIdeaAsync(exchange.AlphaId, "A scarf");
-        await _provider.AddGiftIdeaAsync(exchange.AlphaId, "Actually, a <b>bread</b> book");
+        await ShareOutrightAsync(exchange.AlphaId, "A scarf");
+        await ShareOutrightAsync(exchange.AlphaId, "Actually, a <b>bread</b> book");
 
         // act
         var response = await _sut.FunctionHandler(Get(exchange.Token), new FakeLambdaContext());
@@ -332,7 +332,7 @@ public class ShareGiftIdeasServiceTests
         await _sut.FunctionHandler(Post(exchange.Token, "  A scarf\r\nA hat\r\n  "), new FakeLambdaContext());
 
         // assert: browsers post a textarea's breaks as CRLF.
-        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Should().Be("A scarf\nA hat");
+        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Ideas.Should().Be("A scarf\nA hat");
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public class ShareGiftIdeasServiceTests
         await _sut.FunctionHandler(PostUrlEncoded(exchange.Token, "A scarf & a hat."), new FakeLambdaContext());
 
         // assert
-        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Should().Be("A scarf & a hat.");
+        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Ideas.Should().Be("A scarf & a hat.");
     }
 
     [Fact]
@@ -358,7 +358,7 @@ public class ShareGiftIdeasServiceTests
         await _sut.FunctionHandler(Post(exchange.Token, "Crème brûlée torch 🎁 漢字"), new FakeLambdaContext());
 
         // assert: a multipart part names no charset, and the page declares UTF-8.
-        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Should().Be("Crème brûlée torch 🎁 漢字");
+        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Ideas.Should().Be("Crème brûlée torch 🎁 漢字");
     }
 
     [Fact]
@@ -405,7 +405,7 @@ public class ShareGiftIdeasServiceTests
         await _sut.FunctionHandler(request, new FakeLambdaContext());
 
         // assert
-        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Should().Be("A scarf.");
+        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).Ideas.Should().Be("A scarf.");
     }
 
     [Fact]
@@ -456,7 +456,7 @@ public class ShareGiftIdeasServiceTests
         // arrange
         var exchange = await SeedAsync();
         var ask = await GammaAskedAboutBetaAsync(exchange);
-        await _provider.AddGiftIdeaAsync(exchange.GammaId, "Gamma's own wish");
+        await ShareOutrightAsync(exchange.GammaId, "Gamma's own wish");
         await _provider.AddContributedGiftIdeaAsync(ask.AskId, "A stand mixer");
 
         // act
@@ -486,6 +486,197 @@ public class ShareGiftIdeasServiceTests
         _sent.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Post_GivenTheBoxTicked_StoresTheIdeasAndSendsNothing()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        var response = await _sut.FunctionHandler(
+            Post(exchange.Token, "A cast iron skillet.", holdUntilAsked: true), new FakeLambdaContext());
+
+        // assert: the whole promise of the checkbox. Nobody has asked, so nobody hears about this.
+        _sent.Should().BeEmpty();
+        response.Body.Should().Contain("Saved!");
+        response.Body.Should().Contain("only if they ask for gift ideas");
+
+        await using var context = _contextFactory.CreateDbContext();
+
+        var stored = await context.GiftIdeas
+            .Where(giftIdea => giftIdea.ParticipantId == exchange.AlphaId)
+            .ToListAsync();
+
+        stored.Should().ContainSingle().Which.HoldUntilAsked.Should().BeTrue();
+        stored.Single().Ideas.Should().Be("A cast iron skillet.");
+    }
+
+    [Fact]
+    public async Task Post_GivenTheBoxTickedAndTheirGiverHasAlreadyAsked_SendsItStraightAway()
+    {
+        // arrange: Gamma drew Alpha and has already asked for ideas about them. Somebody who writes
+        // after being asked is owed to somebody who is waiting.
+        var exchange = await SeedAsync();
+        await AskedAboutAlphaAsync(exchange);
+
+        // act
+        var response = await _sut.FunctionHandler(
+            Post(exchange.Token, "A cast iron skillet.", holdUntilAsked: true), new FakeLambdaContext());
+
+        // assert
+        var forward = SentMessages().Should().ContainSingle().Subject;
+        forward.To.Mailboxes.Single().Address.Should().Be(exchange.GammaEmail);
+        forward.HtmlBody.Should().Contain("A cast iron skillet.");
+
+        // Stamped, so the next round of asking does not send the same text again.
+        (await ReleasedAtAsync(exchange)).Should().BeAfter(DateTimeOffset.MinValue);
+
+        // And the page says nothing about it, which the test below pins exactly.
+        response.Body.Should().NotContain("asked for");
+    }
+
+    [Fact]
+    public async Task Post_GivenTheBoxTicked_SaysTheSameThingWhetherItWasHeldOrSent()
+    {
+        // arrange: two exchanges, identical but for whether the person holding Alpha's name has
+        // asked. Told apart, this page would tell a participant that their giver has been asking
+        // about them — which is the one thing asking somebody else instead of them is for.
+        var held = await SeedAsync();
+        var released = await SeedAsync();
+        await AskedAboutAlphaAsync(released);
+
+        // act
+        var heldResponse = await _sut.FunctionHandler(
+            Post(held.Token, "A cast iron skillet.", holdUntilAsked: true), new FakeLambdaContext());
+
+        var releasedResponse = await _sut.FunctionHandler(
+            Post(released.Token, "A cast iron skillet.", holdUntilAsked: true), new FakeLambdaContext());
+
+        // assert: word for word, and one of the two did send an email.
+        releasedResponse.Body.Should().Be(heldResponse.Body);
+        _sent.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Post_GivenTheBoxTickedAndARefusedSubmission_HandsTheBoxBackTicked()
+    {
+        // arrange: Alpha drew Beta, so naming Beta is refused.
+        var exchange = await SeedAsync();
+
+        // act
+        var response = await _sut.FunctionHandler(
+            Post(exchange.Token, "Something Beta would also like", holdUntilAsked: true),
+            new FakeLambdaContext());
+
+        // assert: a box handed back unticked would make the corrected retry an immediate send, which
+        // is the one mistake on this page that cannot be taken back.
+        response.Body.Should().Contain("mentions the name of the person you picked");
+        response.Body.Should().Contain("value=\"yes\" checked");
+
+        _sent.Should().BeEmpty();
+        await ShouldHaveStoredNothing(exchange);
+    }
+
+    [Fact]
+    public async Task Post_GivenAUrlEncodedBodyWithTheBoxTicked_ReadsItTheSame()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        await _sut.FunctionHandler(
+            PostUrlEncoded(exchange.Token, "A scarf.", holdUntilAsked: true), new FakeLambdaContext());
+
+        // assert
+        _sent.Should().BeEmpty();
+        (await _provider.GetLatestGiftIdeaAsync(exchange.AlphaId)).HoldUntilAsked.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Get_GivenHeldIdeas_TicksTheBoxAndNeverMentionsAnAsk()
+    {
+        // arrange: held, and since released, because Gamma asked.
+        var exchange = await SeedAsync();
+        await HoldAsync(exchange.AlphaId, "A cast iron skillet");
+        await AskedAboutAlphaAsync(exchange);
+
+        // act
+        var response = await _sut.FunctionHandler(Get(exchange.Token), new FakeLambdaContext());
+
+        // assert: the standing choice is shown, and nothing about who has asked for what. A box that
+        // changed on its own would be as good as telling them.
+        response.Body.Should().Contain("value=\"yes\" checked");
+        response.Body.Should().Contain("replaces it");
+        response.Body.Should().NotContain("asked");
+    }
+
+    [Fact]
+    public async Task Get_GivenTheyHaveSharedOutrightBefore_SaysThatCannotBeTakenBack()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        await ShareOutrightAsync(exchange.AlphaId, "A scarf");
+
+        // act
+        var response = await _sut.FunctionHandler(Get(exchange.Token), new FakeLambdaContext());
+
+        // assert: "these will never be seen by anyone" is not true of an email already sent, and the
+        // page must not imply that ticking the box now recalls it.
+        response.Body.Should().Contain("can't take those back");
+    }
+
+    [Fact]
+    public async Task Get_GivenAContribution_DoesNotOfferToHoldAnythingBack()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        var ask = await GammaAskedAboutBetaAsync(exchange);
+
+        // act
+        var response = await _sut.FunctionHandler(Get(ask.Token), new FakeLambdaContext());
+
+        // assert: whoever is writing here was asked, so waiting for an ask would be waiting for
+        // something that has already happened.
+        response.Body.Should().NotContain(ShareIdeasPageComposer.HoldUntilAskedField);
+        response.Body.Should().NotContain("Only share if");
+    }
+
+    [Fact]
+    public async Task Post_GivenAContributionAskingToHoldItBack_IgnoresThat()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        var ask = await GammaAskedAboutBetaAsync(exchange);
+
+        // act: the form never offers this, so a body carrying it was hand-made.
+        await _sut.FunctionHandler(
+            Post(ask.Token, "Beta has been after a stand mixer.", holdUntilAsked: true),
+            new FakeLambdaContext());
+
+        // assert: it goes to the person who asked, exactly as an answer to an ask does.
+        var forward = SentMessages().Should().ContainSingle().Subject;
+        forward.To.Mailboxes.Single().Address.Should().Be(exchange.AlphaEmail);
+    }
+
+    /// <summary>Gamma, who drew Alpha, asks for gift ideas about Alpha.</summary>
+    private Task<RecordGiftIdeaEnquiryResponse> AskedAboutAlphaAsync(SeededExchange exchange) =>
+        _provider.RecordGiftIdeaEnquiryAsync(new RecordGiftIdeaEnquiryRequest
+        {
+            AskerParticipantId = exchange.GammaId,
+            SubjectParticipantId = exchange.AlphaId
+        });
+
+    private async Task<DateTimeOffset> ReleasedAtAsync(SeededExchange exchange)
+    {
+        await using var context = _contextFactory.CreateDbContext();
+
+        return await context.GiftIdeaEnquiries
+            .Where(enquiry => enquiry.AskerParticipantId == exchange.GammaId
+                              && enquiry.SubjectParticipantId == exchange.AlphaId)
+            .Select(enquiry => enquiry.ReleasedAt)
+            .SingleAsync();
+    }
+
     /// <summary>Alpha, who drew Beta, asks Gamma what Beta might like.</summary>
     private async Task<(Guid AskId, string Token)> GammaAskedAboutBetaAsync(SeededExchange exchange)
     {
@@ -500,6 +691,24 @@ public class ShareGiftIdeasServiceTests
 
         return (askId, token);
     }
+
+    /// <summary>A submission already shared outright, which is what these arrangements mean.</summary>
+    private Task<Guid> ShareOutrightAsync(Guid participantId, string ideas) =>
+        _provider.AddGiftIdeaAsync(new AddGiftIdeaRequest
+        {
+            ParticipantId = participantId,
+            Ideas = ideas,
+            HoldUntilAsked = false
+        });
+
+    /// <summary>A submission written down and held back until somebody asks for it.</summary>
+    private Task<Guid> HoldAsync(Guid participantId, string ideas) =>
+        _provider.AddGiftIdeaAsync(new AddGiftIdeaRequest
+        {
+            ParticipantId = participantId,
+            Ideas = ideas,
+            HoldUntilAsked = true
+        });
 
     private async Task ShouldHaveStoredNothing(SeededExchange exchange)
     {
@@ -565,10 +774,22 @@ public class ShareGiftIdeasServiceTests
             PathParameters = new Dictionary<string, string> { ["token"] = token }
         };
 
-    /// <summary>What a browser submitting the share form sends: multipart, as the form declares.</summary>
-    private static APIGatewayProxyRequest Post(string token, string ideas)
+    /// <summary>
+    /// What a browser submitting the share form sends: multipart, as the form declares.
+    /// </summary>
+    /// <remarks>
+    /// An unticked checkbox is not posted at all, which is why holding back is expressed here by the
+    /// part being there rather than by anything it contains.
+    /// </remarks>
+    private static APIGatewayProxyRequest Post(string token, string ideas, bool holdUntilAsked = false)
     {
         const string boundary = "----WebKitFormBoundaryx7Qp2ZcJ4mTn9aLk";
+
+        var hold = holdUntilAsked
+            ? $"--{boundary}\r\n"
+              + $"Content-Disposition: form-data; name=\"{ShareIdeasPageComposer.HoldUntilAskedField}\"\r\n\r\n"
+              + "yes\r\n"
+            : string.Empty;
 
         return new APIGatewayProxyRequest
         {
@@ -580,11 +801,12 @@ public class ShareGiftIdeasServiceTests
             Body = $"--{boundary}\r\n"
                    + $"Content-Disposition: form-data; name=\"{ShareIdeasPageComposer.IdeasField}\"\r\n\r\n"
                    + $"{ideas}\r\n"
+                   + hold
                    + $"--{boundary}--\r\n"
         };
     }
 
-    private static APIGatewayProxyRequest PostUrlEncoded(string token, string ideas) =>
+    private static APIGatewayProxyRequest PostUrlEncoded(string token, string ideas, bool holdUntilAsked = false) =>
         new()
         {
             HttpMethod = "POST",
@@ -592,6 +814,7 @@ public class ShareGiftIdeasServiceTests
             PathParameters = new Dictionary<string, string> { ["token"] = token },
             Headers = new Dictionary<string, string> { ["Content-Type"] = "application/x-www-form-urlencoded" },
             Body = $"{ShareIdeasPageComposer.IdeasField}={Uri.EscapeDataString(ideas)}"
+                   + (holdUntilAsked ? $"&{ShareIdeasPageComposer.HoldUntilAskedField}=yes" : string.Empty)
         };
 
     private ImmutableList<MimeMessage> SentMessages() =>

@@ -48,7 +48,17 @@ public class DataDeletionTests
         var participant = await AddParticipantAsync(first);
         var participantId = (await _provider.GetParticipantIdsByEmailAsync(first.HatId))[participant.Person.Email];
 
-        await _provider.AddGiftIdeaAsync(participantId, "A good book");
+        await _provider.AddGiftIdeaAsync(new AddGiftIdeaRequest
+        {
+            ParticipantId = participantId,
+            Ideas = "A good book",
+            HoldUntilAsked = false
+        });
+        await _provider.RecordGiftIdeaEnquiryAsync(new RecordGiftIdeaEnquiryRequest
+        {
+            AskerParticipantId = participantId,
+            SubjectParticipantId = participantId
+        });
         await _provider.IssueLeaveTokensAsync(first.HatId);
         await _provider.RecordDoNotAddAsync(new RecordDoNotAddRequest
         {
@@ -68,6 +78,7 @@ public class DataDeletionTests
         (await context.Hats.CountAsync(hat => hat.HatId == first.HatId || hat.HatId == second.HatId)).Should().Be(0);
         (await context.Participants.CountAsync(row => row.HatId == first.HatId || row.HatId == second.HatId)).Should().Be(0);
         (await context.GiftIdeas.CountAsync(idea => idea.ParticipantId == participantId)).Should().Be(0);
+        (await context.GiftIdeaEnquiries.CountAsync(row => row.AskerParticipantId == participantId)).Should().Be(0);
         (await context.ParticipantLeaveTokens.CountAsync(token => token.ParticipantId == participantId)).Should().Be(0);
         (await context.DoNotAddToExchange.CountAsync(block => block.HatId == first.HatId)).Should().Be(0);
     }

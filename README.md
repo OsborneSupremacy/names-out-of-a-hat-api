@@ -44,6 +44,8 @@ A participant can ask the person whose name they drew what they'd like, and the 
 
 No account and no app. The SHARE GIFT IDEAS button in an email opens a page with a box to type in, and what's typed there goes to the one person it's for. The link is unique to that participant, or to that particular ask, which is how the ideas get routed to the right person while the person holding their name stays anonymous. Coming back to the same link shows what was shared last, so changing your mind is an edit rather than starting again.
 
+There's also a checkbox for people who'd rather not push ideas at somebody who never asked: tick it and the ideas are written down and sent to nobody, until the person who picked your name asks for gift ideas. If they never ask, nobody ever sees them.
+
 ### You can see whether the invitation actually arrived
 
 Every invitation's delivery status is visible per participant — delivered, bounced, marked as spam, or nothing heard yet. When an address is wrong you can correct just that one and resend to just that person, without disturbing the draw. Hand somebody the wrong slip of paper and it's simply gone.
@@ -182,6 +184,14 @@ Gift ideas used to arrive by email, at an address unique to each participant. It
 The link is the whole credential. Email could also check that the From address matched the participant, and a page can't, so correcting a participant's address revokes every gift ideas link the old address was sent — their own, and every ask that reached them about somebody else. An ask is closed off by overwriting its token hash rather than by deleting it, because the ask row is where a contribution records who wrote it and who it's about.
 
 Refusals happen on the page, with what was typed kept in the box: a mention of the writer's own pick, shortened links, links back to this site, too many links, and anything moderation turns down. Nothing a sender writes is ever turned into a link. URLs arrive as text, so the reader sees where they actually go rather than words wrapped around an anchor. Some clients will make them clickable anyway, which is fine — what matters is that this application isn't the thing that hid the address.
+
+### Held ideas are released by the ask, not by the asking of them
+
+Ticking "only share if the person who has my name asks" is the one place this application stores something it has been told not to send. Releasing it needs a durable record of who asked for ideas about whom, and there wasn't one: asking somebody *else* about your pick writes a row, but asking the pick themselves only ever issued a token, sent an email and left a throttle entry in DynamoDB that expires within the week. So asking now writes down that you asked, and it outlives the round of asking because it has to — somebody may write ideas down weeks after they were asked for, and the share page consults this to find out whether anybody is waiting.
+
+What releases a submission is comparing it against when something was last released, rather than whether the asking was new. The mail sender here cannot report a failure, so a release that was dropped has to be repeatable and one that arrived must not be sent twice; the comparison gives both, and it means the two orders — ask then write, write then ask — need no separate handling.
+
+The participant is never told any of this. Not on the page, not by email, and not by a checkbox that quietly changed on them. Telling them would be telling them that whoever holds their name has been asking about them, which is exactly what asking other people instead of the recipient exists to avoid — so the confirmation says the same words whether the ideas are still sitting here or have just gone out. Both are true: they go to that one person, and only if they ask.
 
 ### Correcting an address is its own endpoint
 

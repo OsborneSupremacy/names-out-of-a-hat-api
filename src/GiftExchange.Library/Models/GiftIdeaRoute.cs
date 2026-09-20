@@ -70,6 +70,17 @@ public record GiftIdeaRoute
     public required Person Giver { get; init; }
 
     /// <summary>
+    /// The participant row behind <see cref="Giver"/>, or the all-zero id when nobody has drawn the
+    /// subject.
+    /// </summary>
+    /// <remarks>
+    /// Here so that a submission held back until somebody asks can be matched against whether that
+    /// somebody has asked, which is a fact about a pair of participants rather than about a person.
+    /// On a contribution it is the asker, who is the same person by a shorter route.
+    /// </remarks>
+    public required Guid GiverParticipantId { get; init; }
+
+    /// <summary>
     /// The ask this submission answers, or the all-zero id when the sender is writing about
     /// themselves and nobody asked them through this route.
     /// </summary>
@@ -96,6 +107,7 @@ internal static class GiftIdeaRoutes
         SenderPickedRecipientParticipantId = Guid.Empty,
         Subject = Persons.Empty,
         Giver = Persons.Empty,
+        GiverParticipantId = Guid.Empty,
         AskId = Guid.Empty
     };
 }

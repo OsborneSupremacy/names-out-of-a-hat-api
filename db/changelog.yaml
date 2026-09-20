@@ -1160,3 +1160,109 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: AWS IAM GRANT giftexchange_user TO '${inbound_mail_role_arn}'
+
+  - changeSet:
+      id: gift_idea--0002
+      author: ben
+      comment: >
+        Whether a submission is held back until the person who drew the writer asks for it. A
+        participant who would rather not push ideas at somebody who never wanted them had no way to
+        write anything down at all before this.
+
+        Stays nullable, for the reasons hat--0005 and person--0003 give: DSQL rejects ALTER COLUMN
+        ... SET NOT NULL, and takes neither a NOT NULL nor a DEFAULT on an ADD COLUMN, so the rows
+        already in the table can only be filled by a statement of their own. gift_idea--0003 is that
+        statement; GiftIdeaEntity.HoldUntilAsked being non-nullable is what keeps every row written
+        after it filled.
+      changes:
+        - sqlFile:
+            path: tables/gift_idea--0002.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: ALTER TABLE gift_idea DROP COLUMN hold_until_asked
+
+  - changeSet:
+      id: gift_idea--0003
+      author: ben
+      comment: >
+        Every submission that predates the column was shared outright, because there was no way to
+        hold one back. FALSE is what happened to these rows rather than a guess at what their writers
+        would have chosen.
+
+        Unconditional on purpose: the column was only just added, so every row is holding the NULL it
+        arrived as.
+      changes:
+        - sqlFile:
+            path: tables/gift_idea--0003.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: UPDATE gift_idea SET hold_until_asked = NULL
+
+  - changeSet:
+      id: gift_idea_enquiry--0001
+      author: ben
+      comment: >
+        One participant having asked for gift ideas about their own pick, which is what releases a
+        held submission to them. Nothing recorded this durably: asking the pick themselves wrote no
+        row at all, only a token, an email and a throttle entry that expires after a week -- and a
+        participant may write held ideas long after somebody asked, so the fact has to outlive the
+        asking.
+      changes:
+        - sqlFile:
+            path: tables/gift_idea_enquiry--0001.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: DROP TABLE gift_idea_enquiry
+
+  - changeSet:
+      id: uq_gift_idea_enquiry_asker_subject--0001
+      author: ben
+      comment: >
+        The lookup both the Ask and the share page make: has this giver asked about this participant.
+        One row per pair -- asking again changes nothing about what is owed to them.
+
+        Unique, for the reason uq_gift_idea_ask_hash--0001 gives: the table starts empty, so there is
+        no crowd of backfilled rows sharing a value for a unique index to reject.
+      changes:
+        - sql:
+            sql: CREATE UNIQUE INDEX ASYNC uq_gift_idea_enquiry_asker_subject ON gift_idea_enquiry (asker_participant_id, subject_participant_id)
+      rollback:
+        - sql:
+            sql: DROP INDEX uq_gift_idea_enquiry_asker_subject
+
+  - changeSet:
+      id: idx_gift_idea_enquiry_subject--0001
+      author: ben
+      comment: >
+        Removing a participant has to reach the rows naming them as a subject as well as the ones
+        naming them as an asker. No third index: the asker side is the leading column of
+        uq_gift_idea_enquiry_asker_subject, and deleting a hat filters on the asker alone, since both
+        participants an enquiry names belong to the same exchange.
+      changes:
+        - sql:
+            sql: CREATE INDEX ASYNC idx_gift_idea_enquiry_subject ON gift_idea_enquiry (subject_participant_id)
+      rollback:
+        - sql:
+            sql: DROP INDEX idx_gift_idea_enquiry_subject
+
+  - changeSet:
+      id: giftexchange_user--0015
+      author: ben
+      comment: >
+        CRUD on gift_idea_enquiry. A separate changeset rather than an addition to --0009, whose
+        checksum covers the tables it named when it ran. UPDATE as well as INSERT, because released_at
+        is stamped on a row that already exists.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0015.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: REVOKE SELECT, INSERT, UPDATE, DELETE ON gift_idea_enquiry FROM giftexchange_user

@@ -142,6 +142,11 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
             return Page(_pageComposer.ComposeChoose(
                 subjectName, candidates, token, "Choose at least one person to ask."));
 
+        // Before anybody is asked, because this is what the asker is owed already. Recorded even if
+        // every ask below is then refused by the throttle: the throttle governs how often somebody
+        // may be mailed, and what is written down here is that this participant asked.
+        var released = await ReleaseHeldIdeasAsync(route).ConfigureAwait(false);
+
         var attempts = ImmutableList.CreateBuilder<AskAttempt>();
 
         foreach (var target in targets)
@@ -160,7 +165,81 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
                     _composer.ComposeAskSummary(subjectName, outcomes))
                 .ConfigureAwait(false);
 
-        return Page(_pageComposer.ComposeAskResults(subjectName, outcomes));
+        return Page(_pageComposer.ComposeAskResults(new ComposeAskResultsRequest
+        {
+            SubjectName = subjectName,
+            Attempts = outcomes,
+            ReleasedHeldIdeas = released
+        }));
+    }
+
+    /// <summary>
+    /// Writes down that this participant asked about their pick, and passes on anything the pick
+    /// wrote and asked us to hold until somebody did.
+    /// </summary>
+    /// <remarks>
+    /// The record outlives the round of asking, and has to. A participant may write held ideas long
+    /// after they were asked for — asking the pick directly used to leave nothing behind but a
+    /// throttle entry that expires within the week — and the share page consults this to decide
+    /// whether anybody is waiting.
+    ///
+    /// The release is decided by comparing the submission against
+    /// <see cref="GiftIdeaEnquiryEntity.ReleasedAt"/> rather than by whether the enquiry was new.
+    /// Nothing here can tell whether an email went out, so a release that was dropped has to be
+    /// repeatable, and one that arrived must not be sent twice. The comparison gives both: once per
+    /// submission, and again if a later submission replaces it.
+    ///
+    /// The newest submission decides, and only then its flag. Somebody who held ideas back and later
+    /// shared outright has already had the later version delivered, and the earlier held one is not
+    /// what they want their giver reading now.
+    ///
+    /// The pick is never told any of this. Being told would be being told that whoever holds their
+    /// name has been asking about them, which is the one thing asking other people instead of them was
+    /// meant to avoid.
+    /// </remarks>
+    private async Task<bool> ReleaseHeldIdeasAsync(GiftIdeaRoute route)
+    {
+        var subjectParticipantId = route.SenderPickedRecipientParticipantId;
+
+        var enquiry = await _giftExchangeProvider
+            .RecordGiftIdeaEnquiryAsync(new RecordGiftIdeaEnquiryRequest
+            {
+                // The subject cannot be empty here: the handler has already shown the unavailable
+                // page when this participant has no pick, so there is nothing to re-derive.
+                AskerParticipantId = route.ParticipantId,
+                SubjectParticipantId = subjectParticipantId
+            })
+            .ConfigureAwait(false);
+
+        var latest = await _giftExchangeProvider
+            .GetLatestGiftIdeaAsync(subjectParticipantId)
+            .ConfigureAwait(false);
+
+        if (!latest.HoldUntilAsked
+            || string.IsNullOrEmpty(latest.Ideas)
+            || latest.CreatedAt <= enquiry.ReleasedAt)
+            return false;
+
+        await _sender.SendAsync(
+                route.Sender.Email,
+                GiftIdeaEmailCompositionService.ForwardSubject(route.SenderPickedRecipient.Name),
+                _composer.ComposeHeldForward(
+                    route.SenderPickedRecipient.Name, route.HatName, latest.Ideas))
+            .ConfigureAwait(false);
+
+        // After the send, so that a message that never went out is tried again by the next ask.
+        await _giftExchangeProvider
+            .MarkGiftIdeaEnquiryReleasedAsync(new MarkGiftIdeaEnquiryReleasedRequest
+            {
+                AskerParticipantId = route.ParticipantId,
+                SubjectParticipantId = subjectParticipantId,
+                ReleasedAt = DateTimeOffset.UtcNow
+            })
+            .ConfigureAwait(false);
+
+        _logger.LogInformation("Released a held gift ideas submission to somebody who asked.");
+
+        return true;
     }
 
     /// <summary>

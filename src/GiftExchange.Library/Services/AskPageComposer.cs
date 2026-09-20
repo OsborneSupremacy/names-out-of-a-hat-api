@@ -145,13 +145,22 @@ public class AskPageComposer
     /// asked, some refused because this asker asked them recently — and a total gives the reader no
     /// way to tell which of the names they chose still needs another route.
     /// </remarks>
-    public string ComposeAskResults(string subjectName, ImmutableList<AskAttempt> attempts)
+    internal string ComposeAskResults(ComposeAskResultsRequest request)
     {
-        var encodedName = HttpUtility.HtmlEncode(subjectName);
-        var sent = attempts.Where(attempt => attempt.Sent).ToImmutableList();
-        var skipped = attempts.Where(attempt => !attempt.Sent).ToImmutableList();
+        var encodedName = HttpUtility.HtmlEncode(request.SubjectName);
+        var sent = request.Attempts.Where(attempt => attempt.Sent).ToImmutableList();
+        var skipped = request.Attempts.Where(attempt => !attempt.Sent).ToImmutableList();
 
         var body = new StringBuilder();
+
+        // First, because it is the one thing on this page that has already happened. Everything else
+        // here is a message somebody else has yet to answer.
+        if (request.ReleasedHeldIdeas)
+            body.Append(
+                $"""
+                 <p>{encodedName} had already written down some gift ideas, to be passed on if anyone
+                 asked. We've just sent them to you.</p>
+                 """);
 
         body.Append(sent.IsEmpty
             ? "<p>We didn't ask anyone this time.</p>"
@@ -180,7 +189,7 @@ public class AskPageComposer
 
         body.Append("<p>You can close this page.</p>");
 
-        return Page(sent.IsEmpty ? "Nothing sent" : "Asked!", body.ToString());
+        return Page(sent.IsEmpty && !request.ReleasedHeldIdeas ? "Nothing sent" : "Asked!", body.ToString());
     }
 
     /// <summary>

@@ -1,0 +1,18 @@
+-- Whether this submission is to be held back until somebody asks for it.
+--
+-- A participant can write down what they would like before anybody has asked, and until now that
+-- always travelled straight to whoever drew them. Some people would rather not push ideas at
+-- somebody who never wanted them, and the only way to hold back was to write nothing -- which left
+-- nothing to send when the ask did arrive. Ticked, a submission is stored and sent to nobody; it
+-- reaches the one person who drew them if and when that person asks for gift ideas.
+--
+-- Set once, when the row is written, and never changed afterwards. This table is append-only, and
+-- clearing the flag on release would untick the box the next time the writer opened the form -- which
+-- would tell them their giver had been asking about them, the one thing the Ask exists to avoid.
+-- Whether anything has been released lives on gift_idea_enquiry instead.
+--
+-- Nullable, for the reason person--0003.sql and hat--0005 give: DSQL rejects ALTER COLUMN ... SET
+-- NOT NULL, and takes neither a NOT NULL nor a DEFAULT on an ADD COLUMN, so rows already in the
+-- table can only be filled by a statement of their own. gift_idea--0003 is that statement, and
+-- GiftIdeaEntity.HoldUntilAsked being non-nullable is what keeps every row written after it filled.
+ALTER TABLE gift_idea ADD COLUMN hold_until_asked BOOLEAN

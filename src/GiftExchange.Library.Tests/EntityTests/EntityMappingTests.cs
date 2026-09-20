@@ -159,6 +159,11 @@ public partial class EntityMappingTests
         // and a face is chosen when a participant is added, so every row written since carries one.
         "participant.emoji",
 
+        // Added by gift_idea--0002, backfilled by gift_idea--0003. GiftIdeaEntity.HoldUntilAsked is
+        // non-nullable, and the one path that writes a submission states it either way -- the share
+        // form posts the checkbox or it does not.
+        "gift_idea.hold_until_asked",
+
         // Added by person--0003, backfilled by person--0004. PersonEntity.AddedByPersonId is
         // non-nullable, and the two paths that write a person -- ResolvePersonIdAsync and the
         // address correction that lands on an address nobody holds -- both state it.

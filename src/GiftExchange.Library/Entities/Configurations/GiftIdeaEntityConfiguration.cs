@@ -23,6 +23,11 @@ internal class GiftIdeaEntityConfiguration : IEntityTypeConfiguration<GiftIdeaEn
         builder.Property(giftIdea => giftIdea.CreatedAt).HasColumnName("created_at").IsRequired();
 
         builder
+            .Property(giftIdea => giftIdea.HoldUntilAsked)
+            .HasColumnName("hold_until_asked")
+            .IsRequired();
+
+        builder
             .Property(giftIdea => giftIdea.InboundMessageId)
             .HasColumnName("inbound_message_id")
             .HasMaxLength(255)

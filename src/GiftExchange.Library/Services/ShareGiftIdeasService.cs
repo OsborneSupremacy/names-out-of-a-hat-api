@@ -19,6 +19,12 @@ namespace GiftExchange.Library.Services;
 ///
 /// Both kinds of submission come through here, told apart by which table the token resolves in.
 /// Every check is the same for both; what differs is where the text is stored and who it goes to.
+///
+/// A participant writing about themselves may also ask for their words to be held back until the
+/// person who drew them asks for gift ideas. That is the one thing this handler stores and does not
+/// send — released by <see cref="AskForGiftIdeasService"/> when the ask comes, or here if the ask
+/// came first. Which of the two happened is never shown to the writer: see
+/// <see cref="ForwardIfAlreadyAskedAsync"/>.
 /// </remarks>
 [UsedImplicitly]
 internal class ShareGiftIdeasService : IApiGatewayHandler
@@ -78,7 +84,7 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
             return Page(ShareIdeasPageComposer.ComposeUnavailable());
 
         return request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase)
-            ? await ShareAsync(route, token, ParseIdeas(request)).ConfigureAwait(false)
+            ? await ShareAsync(route, token, ParseSubmission(request)).ConfigureAwait(false)
             : await ShowFormAsync(route, token).ConfigureAwait(false);
     }
 
@@ -87,17 +93,42 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     /// </summary>
     private async Task<APIGatewayProxyResponse> ShowFormAsync(GiftIdeaRoute route, string token)
     {
-        var latest = route.IsContribution
-            ? await _giftExchangeProvider.GetLatestContributedGiftIdeaAsync(route.AskId).ConfigureAwait(false)
-            : await _giftExchangeProvider.GetLatestGiftIdeaAsync(route.ParticipantId).ConfigureAwait(false);
+        if (route.IsContribution)
+        {
+            var answer = await _giftExchangeProvider
+                .GetLatestContributedGiftIdeaAsync(route.AskId)
+                .ConfigureAwait(false);
+
+            return Page(_pageComposer.ComposeForm(new ComposeShareIdeasFormRequest
+            {
+                Route = route,
+                Token = token,
+                Ideas = answer,
+                Notice = string.Empty,
+                HasSharedBefore = !string.IsNullOrEmpty(answer),
+                // Never offered on this path: whoever is writing was asked, so there is nothing to
+                // wait for.
+                HoldUntilAsked = false,
+                HasSharedOutrightBefore = false
+            }));
+        }
+
+        var latest = await _giftExchangeProvider
+            .GetLatestGiftIdeaAsync(route.ParticipantId)
+            .ConfigureAwait(false);
 
         return Page(_pageComposer.ComposeForm(new ComposeShareIdeasFormRequest
         {
             Route = route,
             Token = token,
-            Ideas = latest,
+            Ideas = latest.Ideas,
             Notice = string.Empty,
-            HasSharedBefore = !string.IsNullOrEmpty(latest)
+            HasSharedBefore = !string.IsNullOrEmpty(latest.Ideas),
+            // The standing choice, read back off what is stored. Whether anything has since been
+            // released is deliberately not consulted: a box that changed on its own would tell the
+            // writer that somebody had asked about them.
+            HoldUntilAsked = latest.HoldUntilAsked,
+            HasSharedOutrightBefore = latest.HasSharedOutrightBefore
         }));
     }
 
@@ -108,9 +139,17 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     /// Stored before anything is sent. If sending fails after this, the submission still exists;
     /// the reverse would lose what somebody wrote.
     /// </remarks>
-    private async Task<APIGatewayProxyResponse> ShareAsync(GiftIdeaRoute route, string token, string ideas)
+    private async Task<APIGatewayProxyResponse> ShareAsync(
+        GiftIdeaRoute route,
+        string token,
+        SharedIdeasSubmission submission
+    )
     {
-        var outcome = await CheckAsync(ideas, route).ConfigureAwait(false);
+        // Ignored outright on a contribution rather than merely unoffered, so a hand-made post
+        // cannot hold back ideas that were asked for.
+        var holdUntilAsked = submission.HoldUntilAsked && !route.IsContribution;
+
+        var outcome = await CheckAsync(submission.Ideas, route).ConfigureAwait(false);
 
         if (outcome != GiftIdeaSubmissionOutcome.Shared)
         {
@@ -120,17 +159,73 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
             {
                 Route = route,
                 Token = token,
-                Ideas = ideas,
+                Ideas = submission.Ideas,
                 Notice = ShareIdeasPageComposer.ExplainRefusal(outcome),
-                HasSharedBefore = false
+                HasSharedBefore = false,
+                // Handed straight back. A box that came back unticked would make the corrected
+                // retry an immediate send, which is the one mistake on this page that cannot be
+                // taken back.
+                HoldUntilAsked = holdUntilAsked,
+                HasSharedOutrightBefore = false
             }));
         }
 
-        await StoreAsync(route, ideas).ConfigureAwait(false);
+        await StoreAsync(route, submission.Ideas, holdUntilAsked).ConfigureAwait(false);
+
+        if (holdUntilAsked)
+            await ForwardIfAlreadyAskedAsync(route, submission.Ideas).ConfigureAwait(false);
+        else
+            await ForwardAsync(route, submission.Ideas).ConfigureAwait(false);
+
+        return Page(_pageComposer.ComposeShared(new ComposeSharedIdeasRequest
+        {
+            Route = route,
+            Ideas = submission.Ideas,
+            HoldUntilAsked = holdUntilAsked
+        }));
+    }
+
+    /// <summary>
+    /// Passes a held submission on after all, when the person it is for has already asked.
+    /// </summary>
+    /// <remarks>
+    /// Asking and writing can happen in either order, and a submission written after the ask is owed
+    /// to somebody who is waiting for it. Nothing about this reaches the page: the writer is told the
+    /// same thing either way, because the difference between the two is the fact that their giver
+    /// asked, and that is precisely what asking somebody else about them was meant to keep quiet.
+    ///
+    /// The release is stamped so that the next round of asking does not send the same text again.
+    /// </remarks>
+    private async Task ForwardIfAlreadyAskedAsync(GiftIdeaRoute route, string ideas)
+    {
+        // Nobody has drawn them, so nobody can have asked. The submission is already stored.
+        if (route.GiverParticipantId == Guid.Empty)
+            return;
+
+        var asked = await _giftExchangeProvider
+            .HasAskedForGiftIdeasAsync(new HasAskedForGiftIdeasRequest
+            {
+                AskerParticipantId = route.GiverParticipantId,
+                SubjectParticipantId = route.ParticipantId
+            })
+            .ConfigureAwait(false);
+
+        if (!asked)
+        {
+            _logger.LogInformation("Held a gift ideas submission until somebody asks for it.");
+            return;
+        }
 
         await ForwardAsync(route, ideas).ConfigureAwait(false);
 
-        return Page(_pageComposer.ComposeShared(route, ideas));
+        await _giftExchangeProvider
+            .MarkGiftIdeaEnquiryReleasedAsync(new MarkGiftIdeaEnquiryReleasedRequest
+            {
+                AskerParticipantId = route.GiverParticipantId,
+                SubjectParticipantId = route.ParticipantId,
+                ReleasedAt = DateTimeOffset.UtcNow
+            })
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -171,11 +266,16 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     /// theirs; what somebody says about another participant is a suggestion made to the one person
     /// who asked for it, and must never be read back as the subject's own words.
     /// </remarks>
-    private Task<Guid> StoreAsync(GiftIdeaRoute route, string ideas) =>
+    private Task<Guid> StoreAsync(GiftIdeaRoute route, string ideas, bool holdUntilAsked) =>
         route.IsContribution switch
         {
             true => _giftExchangeProvider.AddContributedGiftIdeaAsync(route.AskId, ideas),
-            false => _giftExchangeProvider.AddGiftIdeaAsync(route.ParticipantId, ideas)
+            false => _giftExchangeProvider.AddGiftIdeaAsync(new AddGiftIdeaRequest
+            {
+                ParticipantId = route.ParticipantId,
+                Ideas = ideas,
+                HoldUntilAsked = holdUntilAsked
+            })
         };
 
     private Task ForwardAsync(GiftIdeaRoute route, string ideas)
@@ -221,7 +321,8 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     }
 
     /// <summary>
-    /// The text from the form, trimmed and with line endings made consistent.
+    /// What the form posted: the text, trimmed and with line endings made consistent, and whether the
+    /// writer asked for it to be held back.
     /// </summary>
     /// <remarks>
     /// The form posts multipart/form-data, for the size reason
@@ -231,8 +332,13 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     /// Browsers post a textarea's line breaks as CRLF. Stored as LF, so the forward and the echo
     /// break lines the same way whatever sent them. An unreadable body is treated as an empty one,
     /// which the content policy then reports as "write something".
+    ///
+    /// The checkbox is read by whether its field is there at all, which is what a browser says about
+    /// an unticked box — it sends nothing. Its value is not examined: "on" is a default rather than a
+    /// contract, and a body this cannot make sense of should err towards holding ideas back rather
+    /// than towards sending them.
     /// </remarks>
-    private static string ParseIdeas(APIGatewayProxyRequest request)
+    private static SharedIdeasSubmission ParseSubmission(APIGatewayProxyRequest request)
     {
         byte[] body;
 
@@ -244,21 +350,33 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         }
         catch (FormatException)
         {
-            return string.Empty;
+            return Nothing;
         }
 
         var contentType = FindHeader(request, "Content-Type");
 
-        var ideas = contentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase)
-            ? ReadMultipartField(body, contentType)
-            : HttpUtility.ParseQueryString(Encoding.UTF8.GetString(body)).Get(ShareIdeasPageComposer.IdeasField)
-              ?? string.Empty;
+        var fields = contentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase)
+            ? ReadMultipartFields(body, contentType)
+            : ReadUrlEncodedFields(body);
 
-        return ideas.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+        return new SharedIdeasSubmission(
+            fields.Ideas.Replace("\r\n", "\n").Replace('\r', '\n').Trim(),
+            fields.HoldUntilAsked);
     }
 
+    /// <summary>What the two fields carry, before the text has been tidied.</summary>
+    /// <remarks>
+    /// Kept inside this class rather than put in Messaging, because it never crosses a boundary: it
+    /// exists so that one pass over the body answers both questions, and the parse of a multipart
+    /// body is expensive enough not to want twice.
+    /// </remarks>
+    private readonly record struct SharedIdeasSubmission(string Ideas, bool HoldUntilAsked);
+
+    /// <summary>A body that said nothing, which the content policy reports as "write something".</summary>
+    private static SharedIdeasSubmission Nothing => new(string.Empty, false);
+
     /// <summary>
-    /// The ideas field out of a multipart/form-data body, or the empty string.
+    /// Both fields out of a multipart/form-data body.
     /// </summary>
     /// <remarks>
     /// MimeKit is already here for sending mail, and a form post is a MIME multipart with a
@@ -268,7 +386,7 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     /// Decoded as UTF-8 explicitly. Browsers send form fields in the page's encoding and name no
     /// charset on the part, and the page declares UTF-8.
     /// </remarks>
-    private static string ReadMultipartField(byte[] body, string contentType)
+    private static SharedIdeasSubmission ReadMultipartFields(byte[] body, string contentType)
     {
         try
         {
@@ -278,21 +396,38 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
             stream.Position = 0;
 
             if (MimeEntity.Load(stream) is not Multipart multipart)
-                return string.Empty;
+                return Nothing;
 
-            var field = multipart
-                .OfType<TextPart>()
-                .FirstOrDefault(part =>
-                    part.ContentDisposition is not null
-                    && part.ContentDisposition.Parameters.TryGetValue("name", out string? name)
-                    && name == ShareIdeasPageComposer.IdeasField);
+            var parts = multipart.OfType<TextPart>().ToList();
 
-            return field?.GetText(Encoding.UTF8) ?? string.Empty;
+            var ideas = FindPart(parts, ShareIdeasPageComposer.IdeasField);
+
+            return new SharedIdeasSubmission(
+                ideas?.GetText(Encoding.UTF8) ?? string.Empty,
+                FindPart(parts, ShareIdeasPageComposer.HoldUntilAskedField) is not null);
         }
         catch (Exception exception) when (exception is FormatException or ParseException)
         {
-            return string.Empty;
+            return Nothing;
         }
+    }
+
+    private static TextPart? FindPart(IEnumerable<TextPart> parts, string name) =>
+        parts.FirstOrDefault(part =>
+            part.ContentDisposition is not null
+            && part.ContentDisposition.Parameters.TryGetValue("name", out string? partName)
+            && partName == name);
+
+    /// <summary>
+    /// Both fields out of a URL-encoded body, which is what a form with no enctype sends.
+    /// </summary>
+    private static SharedIdeasSubmission ReadUrlEncodedFields(byte[] body)
+    {
+        var fields = HttpUtility.ParseQueryString(Encoding.UTF8.GetString(body));
+
+        return new SharedIdeasSubmission(
+            fields.Get(ShareIdeasPageComposer.IdeasField) ?? string.Empty,
+            fields.AllKeys.Contains(ShareIdeasPageComposer.HoldUntilAskedField));
     }
 
     /// <summary>
