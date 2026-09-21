@@ -178,6 +178,75 @@ public class DeliveryEventsServiceTests
         (await SingleRowAsync(messageId)).Status.Should().Be(DeliveryStatus.Complained);
     }
 
+    /// <summary>
+    /// Marking a message as spam blocks the address from every exchange, so the next organizer is
+    /// refused before sending rather than told afterwards. Delivered twice to show the retry SQS may
+    /// make is harmless.
+    /// </summary>
+    [Fact]
+    public async Task AComplaint_BlocksTheComplainantFromBeingAddedAnywhere()
+    {
+        // arrange
+        var (_, participantId, email) = await ParticipantAsync();
+        var messageId = MessageId();
+
+        // act
+        await _sut.ProcessRecordAsync(Message(Complaint(messageId, participantId, email.ToUpperInvariant())));
+        await _sut.ProcessRecordAsync(Message(Complaint(messageId, participantId, email.ToUpperInvariant())));
+
+        // assert
+        (await BlockedAnywhereCountAsync(email)).Should().Be(1);
+        (await _provider.FindBlockedAnywhereAsync([email.Trim().ToLowerInvariant()])).Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// Most feedback loops send no feedback type at all, so its absence has to block like "abuse".
+    /// </summary>
+    [Fact]
+    public async Task AComplaintWithNoFeedbackType_StillBlocks()
+    {
+        // arrange
+        var (_, participantId, email) = await ParticipantAsync();
+
+        // act
+        await _sut.ProcessRecordAsync(Message(Complaint(MessageId(), participantId, email, feedbackType: "")));
+
+        // assert
+        (await BlockedAnywhereCountAsync(email)).Should().Be(1);
+    }
+
+    /// <summary>"not-spam" is the recipient taking a complaint back, not making one.</summary>
+    [Fact]
+    public async Task ANotSpamReport_DoesNotBlock()
+    {
+        // arrange
+        var (_, participantId, email) = await ParticipantAsync();
+
+        // act
+        await _sut.ProcessRecordAsync(Message(Complaint(MessageId(), participantId, email, feedbackType: "not-spam")));
+
+        // assert
+        (await BlockedAnywhereCountAsync(email)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// The tag is how an event finds an organizer's row; the complaint is about the address, so a
+    /// send that forgot its tag must still block.
+    /// </summary>
+    [Fact]
+    public async Task AComplaintWithNoParticipantTag_StillBlocks()
+    {
+        // arrange
+        var email = $"{Guid.NewGuid():N}@example.com";
+
+        // act
+        var written = await _sut.ProcessRecordAsync(Message(Complaint(MessageId(), Guid.Empty, email)));
+
+        // assert
+        written.Should().BeFalse("there is no participant row to write");
+        (await BlockedAnywhereCountAsync(email)).Should().Be(1);
+    }
+
     [Fact]
     public async Task AnEventWithNoParticipantTag_IsIgnoredRatherThanThrown()
     {
@@ -388,20 +457,35 @@ public class DeliveryEventsServiceTests
           }
           """;
 
-    private static string Complaint(string messageId, Guid participantId) =>
+    private static string Complaint(
+        string messageId,
+        Guid participantId,
+        string email = "someone@example.com",
+        string feedbackType = "abuse"
+    ) =>
         $$"""
           {
             "eventType": "Complaint",
             "mail": {
               "messageId": "{{messageId}}",
               "timestamp": "2026-08-28T10:00:00.000Z",
-              "destination": ["someone@example.com"],
+              "destination": ["{{email}}"],
               {{Tags(participantId, EmailMessageType.Invitation)}}
             },
             "complaint": {
               "timestamp": "2026-08-29T09:00:00.000Z",
-              "complaintFeedbackType": "abuse"
+              "complaintFeedbackType": "{{feedbackType}}",
+              "complainedRecipients": [{ "emailAddress": "{{email}}" }]
             }
           }
           """;
+
+    private async Task<int> BlockedAnywhereCountAsync(string email)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var normalized = email.Trim().ToLowerInvariant();
+
+        return await context.DoNotAddAnywhere.CountAsync(block => block.EmailNormalized == normalized);
+    }
 }

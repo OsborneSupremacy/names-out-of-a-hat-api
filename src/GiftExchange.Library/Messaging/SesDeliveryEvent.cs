@@ -100,6 +100,14 @@ internal record SesEventComplaint
 
     /// <summary>"abuse", "fraud", "not-spam" and the rest. Often absent — most feedback loops omit it.</summary>
     public string ComplaintFeedbackType { get; init; } = string.Empty;
+
+    /// <summary>Who marked it as spam. The address that is blocked from being added again.</summary>
+    public ImmutableList<SesEventComplainedRecipient> ComplainedRecipients { get; init; } = [];
+}
+
+internal record SesEventComplainedRecipient
+{
+    public string EmailAddress { get; init; } = string.Empty;
 }
 
 internal record SesEventReject

@@ -72,8 +72,9 @@ resource "aws_iam_role_policy" "delivery-events-handler-policy" {
 }
 
 # No SES permission of any kind, deliberately. This function reads what SES said and writes it down;
-# it never sends, replies or suppresses anything, and the events it acts on are about messages that
-# have already gone.
+# it never sends, replies or suppresses anything in SES, and the events it acts on are about messages
+# that have already gone. A complaint does make it write the complainant to do_not_add_anywhere, but
+# that is a database row, reached through the same giftexchange_user grant as everything else here.
 
 # dsql:DbConnect permits opening a connection, and which database role it may connect as is decided
 # inside the database by the AWS IAM GRANT in db/roles/giftexchange_user--0011.sql. Without that

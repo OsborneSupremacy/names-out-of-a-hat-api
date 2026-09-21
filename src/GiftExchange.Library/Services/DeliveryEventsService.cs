@@ -15,6 +15,10 @@ namespace GiftExchange.Library.Services;
 /// Everything that reaches here is about a message that has already gone. Nothing this service does
 /// can affect it, so nothing here fails a send; the worst outcome is a status the organizer does
 /// not see.
+///
+/// The one thing it does beyond recording is act on a complaint: whoever marked a message as spam is
+/// put on the do-not-add-anywhere list, so the next organizer is stopped before sending rather than
+/// after.
 /// </remarks>
 [UsedImplicitly]
 internal class DeliveryEventsService
@@ -79,6 +83,9 @@ internal class DeliveryEventsService
             return false;
         }
 
+        if (status == DeliveryStatus.Complained)
+            await BlockComplainantsAsync(notification).ConfigureAwait(false);
+
         var participantId = ParticipantIdOf(notification);
 
         if (participantId == Guid.Empty)
@@ -114,6 +121,63 @@ internal class DeliveryEventsService
             written ? "written" : "left as it was");
 
         return written;
+    }
+
+    /// <summary>
+    /// Puts everybody who marked the message as spam on the do-not-add-anywhere list.
+    /// </summary>
+    /// <remarks>
+    /// Permanent, like every other row on that list: somebody who wants back in is added by an
+    /// organizer who asks them first. Nothing short of that is safe, because an address that has
+    /// told its mailbox provider we are spam will keep saying so, and every further complaint counts
+    /// against the account's sending reputation.
+    ///
+    /// Any feedback type but "not-spam" blocks. Most feedback loops send none at all, so waiting for
+    /// "abuse" would let the majority of complaints through; "not-spam" is the one value that says
+    /// the opposite of a complaint.
+    ///
+    /// Done before, and regardless of, the participant tag. The tag is how the event finds a row to
+    /// show an organizer; the complaint is about the address, whichever send provoked it.
+    ///
+    /// A failure here throws, so the event is retried rather than recorded without its block. The
+    /// provider tolerates the retry: a second write for an address already on the list is a no-op.
+    /// </remarks>
+    private async Task BlockComplainantsAsync(SesDeliveryEvent notification)
+    {
+        if (notification.Complaint is not { } complaint)
+            return;
+
+        if (string.Equals(complaint.ComplaintFeedbackType.TrimNullSafe(), "not-spam", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // Null rather than empty when the field is absent, whatever the initializer says, so the
+        // guard is needed. An event naming nobody blocks nobody.
+        var complainants = (complaint.ComplainedRecipients ?? [])
+            .Select(recipient => recipient.EmailAddress)
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var email in complainants)
+        {
+            await _giftExchangeProvider
+                .RecordDoNotAddAsync(new RecordDoNotAddRequest
+                {
+                    Email = email,
+                    // Not leaving any one exchange, and the provider writes no exchange refusal
+                    // for the empty id.
+                    HatId = Guid.Empty,
+                    OrganizerEmail = string.Empty,
+                    BlockOrganizer = false,
+                    BlockAnywhere = true
+                })
+                .ConfigureAwait(false);
+
+            _logger.LogWarning(
+                "Message {MessageId} was marked as spam ({FeedbackType}); the recipient can no longer be added to any exchange.",
+                notification.Mail.MessageId,
+                string.IsNullOrWhiteSpace(complaint.ComplaintFeedbackType) ? "no feedback type" : complaint.ComplaintFeedbackType);
+        }
     }
 
     /// <summary>
