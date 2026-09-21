@@ -1,3 +1,4 @@
+import { MouseEvent } from 'react'
 import './InvitationsPreviewModal.css'
 
 interface InvitationsPreviewModalProps {
@@ -6,6 +7,14 @@ interface InvitationsPreviewModalProps {
   isSending: boolean
   onBack: () => void
   onSend: () => Promise<void>
+}
+
+// The preview's links point at sample URLs that only exist once real invitations go out,
+// so following one lands on an error page. CSS stops mouse clicks; this also covers keyboard activation.
+function disablePreviewLinks(event: MouseEvent<HTMLDivElement>) {
+  if (event.target instanceof Element && event.target.closest('a')) {
+    event.preventDefault()
+  }
 }
 
 export function InvitationsPreviewModal({
@@ -31,7 +40,11 @@ export function InvitationsPreviewModal({
             <div className="preview-subject">
               <span className="preview-label">Subject:</span> {subject}
             </div>
-            <div className="preview-email-body" dangerouslySetInnerHTML={{ __html: htmlBody }} />
+            <div
+              className="preview-email-body"
+              onClickCapture={disablePreviewLinks}
+              dangerouslySetInnerHTML={{ __html: htmlBody }}
+            />
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { InvitationsPreviewModal } from './InvitationsPreviewModal'
@@ -56,6 +56,23 @@ describe('InvitationsPreviewModal', () => {
     await user.click(screen.getByRole('button', { name: 'Send Invitations' }))
 
     expect(onSend).toHaveBeenCalledOnce()
+  })
+
+  it('does not follow links in the email preview', () => {
+    render(
+      <InvitationsPreviewModal
+        subject="Subject"
+        htmlBody='<p><a href="https://example.com/leave">leave this gift exchange</a></p>'
+        isSending={false}
+        onBack={vi.fn()}
+        onSend={vi.fn(async () => Promise.resolve())}
+      />
+    )
+
+    const link = screen.getByRole('link', { name: 'leave this gift exchange' })
+    const followed = fireEvent.click(link)
+
+    expect(followed).toBe(false)
   })
 
   it('disables actions while sending', () => {
