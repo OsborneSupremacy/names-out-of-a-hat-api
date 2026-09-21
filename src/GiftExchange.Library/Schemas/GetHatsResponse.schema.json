@@ -13,11 +13,29 @@
         "organizerName": {
             "type": "string",
             "description": "The name the organizer is known by. Empty when they have no hats yet."
+        },
+        "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The 1-based page these hats are from."
+        },
+        "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most hats a page holds. Chosen by the server."
+        },
+        "totalCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Every hat the organizer has, across all pages."
         }
     },
     "required": [
         "organizerName",
-        "hats"
+        "hats",
+        "page",
+        "pageSize",
+        "totalCount"
     ],
     "definitions": {
         "hatmetadata": {

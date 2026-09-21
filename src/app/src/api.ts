@@ -12,7 +12,14 @@ export interface HatMetadata {
 
 export interface GetHatsResponse {
   organizerName: string
+  /** One page of hats, newest first. Empty when the page asked for is past the end. */
   hats: HatMetadata[]
+  /** 1-based. */
+  page: number
+  /** Chosen by the server. */
+  pageSize: number
+  /** Every hat the organizer has, across all pages. */
+  totalCount: number
 }
 
 export interface CreateHatRequest {
@@ -302,10 +309,10 @@ async function handleApiError(response: Response, defaultMessage: string): Promi
   throw new Error(message || `${defaultMessage} (${response.status} ${response.statusText})`)
 }
 
-export async function getHats(email: string): Promise<GetHatsResponse> {
+export async function getHats(email: string, page = 1): Promise<GetHatsResponse> {
   const headers = await getAuthHeaders()
 
-  const response = await fetch(`${apiConfig.endpoint}/hats/${encodeURIComponent(email)}`, {
+  const response = await fetch(`${apiConfig.endpoint}/hats/${encodeURIComponent(email)}?page=${page}`, {
     method: 'GET',
     headers,
   })

@@ -70,10 +70,11 @@ public class GiftExchangeProviderTests
         await _sut.CreateHatAsync(hatTwo);
 
         // act
-        var (organizerName, result) = await _sut.GetHatsAsync(hatOne.OrganizerEmail);
+        var page = await _sut.GetHatsAsync(FirstPage(hatOne.OrganizerEmail));
+        var result = page.Hats;
 
         // assert
-        organizerName.Should().Be(hatOne.OrganizerName);
+        page.OrganizerName.Should().Be(hatOne.OrganizerName);
 
         // Compared against anonymous expectations rather than whole records: StatusUpdatedAt is a
         // clock reading taken during the arrange, so it is asserted below for being there rather
@@ -404,10 +405,10 @@ public class GiftExchangeProviderTests
         // assert
         created.Should().AllBeEquivalentTo(true);
 
-        var (organizerName, hats) = await _sut.GetHatsAsync(first.OrganizerEmail);
+        var page = await _sut.GetHatsAsync(FirstPage(first.OrganizerEmail));
 
-        organizerName.Should().Be(first.OrganizerName);
-        hats.Select(hat => hat.HatId).Should().BeEquivalentTo([first.HatId, second.HatId]);
+        page.OrganizerName.Should().Be(first.OrganizerName);
+        page.Hats.Select(hat => hat.HatId).Should().BeEquivalentTo([first.HatId, second.HatId]);
     }
 
     /// <summary>
@@ -530,7 +531,7 @@ public class GiftExchangeProviderTests
         var hat = await CreateHatAsync();
 
         // act
-        var (_, hats) = await _sut.GetHatsAsync(hat.OrganizerEmail);
+        var hats = (await _sut.GetHatsAsync(FirstPage(hat.OrganizerEmail))).Hats;
 
         // assert
         hats.Select(metadata => metadata.HatId).Should().NotContain(Guid.Empty);
@@ -544,10 +545,75 @@ public class GiftExchangeProviderTests
     [Fact]
     public async Task AnEmptyOrganizerEmail_DoesNotReachTheSentinelHat()
     {
-        var (organizerName, hats) = await _sut.GetHatsAsync(string.Empty);
+        var page = await _sut.GetHatsAsync(FirstPage(string.Empty));
 
-        organizerName.Should().BeEmpty();
-        hats.Should().BeEmpty();
+        page.OrganizerName.Should().BeEmpty();
+        page.Hats.Should().BeEmpty();
+        page.TotalCount.Should().Be(0);
+    }
+
+    /// <summary>
+    /// Hats created in the same instant -- which a copy can manage -- still land on exactly one page
+    /// each, because the hat id breaks the tie.
+    /// </summary>
+    [Fact]
+    public async Task GetHatsAsync_GivenHatsCreatedInTheSameInstant_PagesAreDisjointAndComplete()
+    {
+        // arrange
+        var first = await CreateHatAsync();
+        var others = _hatDataModelFaker.Generate(4)
+            .Select(hat => hat with { OrganizerEmail = first.OrganizerEmail, OrganizerName = first.OrganizerName })
+            .ToList();
+
+        foreach (var hat in others)
+            await _sut.CreateHatAsync(hat);
+
+        var hatIds = others.Select(hat => hat.HatId).Append(first.HatId).ToList();
+
+        await using (var context = await _contextFactory.CreateDbContextAsync())
+        {
+            var instant = DateTimeOffset.UtcNow;
+            await context.Hats
+                .Where(hat => hatIds.Contains(hat.HatId))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(hat => hat.CreatedAt, instant));
+        }
+
+        // act
+        var pages = new List<GetHatsPageResponse>();
+        for (var page = 1; page <= 3; page++)
+            pages.Add(await _sut.GetHatsAsync(new GetHatsPageRequest
+            {
+                OrganizerEmail = first.OrganizerEmail,
+                Page = page,
+                PageSize = 2
+            }));
+
+        // assert
+        pages.Select(page => page.Hats.Count).Should().Equal(2, 2, 1);
+        pages.Should().AllSatisfy(page => page.TotalCount.Should().Be(5));
+        pages.SelectMany(page => page.Hats).Select(hat => hat.HatId)
+            .Should().OnlyHaveUniqueItems()
+            .And.BeEquivalentTo(hatIds);
+    }
+
+    [Fact]
+    public async Task GetHatsAsync_GivenAPagePastTheEnd_ReturnsNoHatsButTheRealCount()
+    {
+        // arrange
+        var hat = await CreateHatAsync();
+
+        // act
+        var page = await _sut.GetHatsAsync(new GetHatsPageRequest
+        {
+            OrganizerEmail = hat.OrganizerEmail,
+            Page = 2,
+            PageSize = 5
+        });
+
+        // assert
+        page.Hats.Should().BeEmpty();
+        page.TotalCount.Should().Be(1);
+        page.OrganizerName.Should().Be(hat.OrganizerName);
     }
 
     [Fact]
@@ -813,6 +879,9 @@ public class GiftExchangeProviderTests
 
         return (await context.Hats.SingleAsync(hat => hat.HatId == hatId)).StatusUpdatedAt;
     }
+
+    private static GetHatsPageRequest FirstPage(string organizerEmail) =>
+        new() { OrganizerEmail = organizerEmail, Page = 1, PageSize = 100 };
 
     /// <summary>
     /// Participants belong to a hat. DynamoDB tolerated orphans; a relational schema does not, so

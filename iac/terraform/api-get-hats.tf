@@ -6,7 +6,8 @@ module "lambda-get-hats" {
   gateway_http_operation_name = "GetHats"
   request_validator_id        = aws_api_gateway_request_validator.params.id
   gateway_method_request_parameters = {
-    "method.request.path.email" = true
+    "method.request.path.email"       = true
+    "method.request.querystring.page" = false
   }
   gateway_method_request_model_name                 = ""
   gateway_method_request_model_description          = ""

@@ -1,11 +1,17 @@
-import { useLocation, useNavigate } from 'react-router-dom'
-import { useState, useEffect, useRef } from 'react'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { getHats, createHat, HatMetadata } from '../api'
 import { formatHatStatus } from '../hatStatus'
 import { formatRelativeTime, formatAbsoluteTime } from '../relativeTime'
 import { Header } from '../components/Header'
 import { Footer } from '../components/Footer'
 import { CreateHatModal } from '../components/CreateHatModal'
+
+/** The page in the URL, or the first page for anything that is not a positive whole number. */
+function parsePage(value: string | null): number {
+  const page = Number(value)
+  return Number.isInteger(page) && page >= 1 ? page : 1
+}
 
 interface HomeProps {
   userEmail: string
@@ -15,8 +21,17 @@ interface HomeProps {
 export function Home({ userEmail, onSignOut }: HomeProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  // Kept in the URL so that coming back from an exchange, or refreshing, lands on the same page.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const page = parsePage(searchParams.get('page'))
   const [hats, setHats] = useState<HatMetadata[]>([])
+  // Across every page, which is what decides between the list and the empty state: an empty page
+  // is not the same as having no exchanges.
+  const [totalCount, setTotalCount] = useState(0)
+  const [pageSize, setPageSize] = useState(0)
+  // The first load only. Changing page keeps the current list on screen, dimmed, instead.
   const [loading, setLoading] = useState(true)
+  const [pageLoading, setPageLoading] = useState(false)
   const [error, setError] = useState<string>('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   // null until the hats response arrives, so the greeting never guesses.
@@ -40,33 +55,70 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
     }
   }, [location.pathname, location.state, navigate])
 
+  // Page 1 has no parameter at all, so the plain address is the first page.
+  const goToPage = useCallback(
+    (target: number, replace = false) => {
+      setSearchParams(target <= 1 ? {} : { page: String(target) }, { replace })
+    },
+    [setSearchParams]
+  )
+
   useEffect(() => {
+    // A page answered after the organizer has already moved on to another is dropped.
+    let cancelled = false
+
     async function loadHats() {
+      setPageLoading(true)
+
       try {
-        const response = await getHats(userEmail)
+        const response = await getHats(userEmail, page)
+        if (cancelled) return
+
         setOrganizerName(response.organizerName)
 
         // Nor is the create dialog opened for somebody who has just emptied the list on purpose.
-        if (hideHats.current) return
+        if (hideHats.current) {
+          setLoading(false)
+          setPageLoading(false)
+          return
+        }
+
+        // Past the end: a bookmarked page that no longer exists, or the last exchange on it
+        // deleted. The last page that does exist is shown instead, still under the loading state.
+        if (response.totalCount > 0 && response.hats.length === 0) {
+          goToPage(Math.ceil(response.totalCount / response.pageSize), true)
+          return
+        }
 
         setHats(response.hats)
+        setTotalCount(response.totalCount)
+        setPageSize(response.pageSize)
+        setLoading(false)
+        setPageLoading(false)
 
-        if (response.hats.length === 0 && !openedCreateForEmptyList.current) {
+        if (response.totalCount === 0 && !openedCreateForEmptyList.current) {
           openedCreateForEmptyList.current = true
           setShowCreateModal(true)
         }
       } catch (err) {
+        if (cancelled) return
         console.error('Error loading gift exchanges:', err)
         setError(err instanceof Error ? err.message : 'Failed to load your gift exchanges')
-      } finally {
         setLoading(false)
+        setPageLoading(false)
       }
     }
 
     if (userEmail) {
       loadHats()
     }
-  }, [userEmail])
+
+    return () => {
+      cancelled = true
+    }
+  }, [userEmail, page, goToPage])
+
+  const totalPages = pageSize > 0 ? Math.ceil(totalCount / pageSize) : 1
 
   const handleCreateNew = () => {
     setShowCreateModal(true)
@@ -87,6 +139,7 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
   const handleDataDeleted = () => {
     hideHats.current = true
     setHats([])
+    setTotalCount(0)
     setDataDeletionRequested(true)
   }
 
@@ -131,7 +184,7 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
             <p className="error-message">{error}</p>
           ) : (
             <>
-              {hats.length > 0 ? (
+              {totalCount > 0 ? (
                 <div className="gift-exchanges-section">
                   <div className="section-header">
                     <h3>Your Gift Exchanges</h3>
@@ -139,7 +192,7 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
                       Create New Gift Exchange
                     </button>
                   </div>
-                  <ul className="gift-exchanges-list">
+                  <ul className={`gift-exchanges-list${pageLoading ? ' page-loading' : ''}`} aria-busy={pageLoading}>
                     {hats.map((hat) => {
                       // Empty for a timestamp that cannot be phrased — the minimum date the API
                       // uses for "not known" among them — and the line is left out entirely rather
@@ -171,6 +224,29 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
                       )
                     })}
                   </ul>
+                  {totalPages > 1 && (
+                    <nav className="pagination" aria-label="Gift exchange pages">
+                      <button
+                        type="button"
+                        className="pagination-button"
+                        onClick={() => goToPage(page - 1)}
+                        disabled={page <= 1 || pageLoading}
+                      >
+                        ‹ Previous
+                      </button>
+                      <span className="pagination-status">
+                        Page {page} of {totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        className="pagination-button"
+                        onClick={() => goToPage(page + 1)}
+                        disabled={page >= totalPages || pageLoading}
+                      >
+                        Next ›
+                      </button>
+                    </nav>
+                  )}
                 </div>
               ) : (
                 <div className="empty-state">

@@ -180,9 +180,9 @@ public class DataDeletionTests
         await DeleteAsync(mine.OrganizerEmail, forgetMe: false);
 
         // assert
-        var (organizerName, hats) = await _provider.GetHatsAsync(mine.OrganizerEmail);
-        organizerName.Should().Be(mine.OrganizerName);
-        hats.Should().BeEmpty();
+        var page = await _provider.GetHatsAsync(new GetHatsPageRequest { OrganizerEmail = mine.OrganizerEmail, Page = 1, PageSize = 1 });
+        page.OrganizerName.Should().Be(mine.OrganizerName);
+        page.TotalCount.Should().Be(0);
     }
 
     [Fact]
@@ -265,8 +265,8 @@ public class DataDeletionTests
 
         if (organizerEmail is not null)
         {
-            var (organizerName, _) = await _provider.GetHatsAsync(organizerEmail);
-            hat = hat with { OrganizerEmail = organizerEmail, OrganizerName = organizerName };
+            var page = await _provider.GetHatsAsync(new GetHatsPageRequest { OrganizerEmail = organizerEmail, Page = 1, PageSize = 1 });
+            hat = hat with { OrganizerEmail = organizerEmail, OrganizerName = page.OrganizerName };
         }
 
         await _provider.CreateHatAsync(hat);

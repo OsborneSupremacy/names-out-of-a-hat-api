@@ -175,8 +175,8 @@ public class UpdateProfileTests
         // assert
         response.StatusCode.Should().Be((int)HttpStatusCode.OK);
 
-        var (organizerName, _) = await _provider.GetHatsAsync(email);
-        organizerName.Should().Be("Newly Named");
+        var page = await _provider.GetHatsAsync(new GetHatsPageRequest { OrganizerEmail = email, Page = 1, PageSize = 1 });
+        page.OrganizerName.Should().Be("Newly Named");
     }
 
     private Task<APIGatewayProxyResponse> UpdateNameAsync(string organizerEmail, string name) =>

@@ -151,6 +151,48 @@
   cursor: pointer;
 }
 
+/* Under the list. The row keeps its place while the next page loads, so the list does not jump. */
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.pagination-status {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.pagination-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid #d1d5db;
+  background-color: white;
+  color: #374151;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.pagination-button:hover:not(:disabled) {
+  background-color: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.pagination-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The page being replaced, while its successor is on the way. */
+.gift-exchanges-list.page-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
@@ -224,6 +266,21 @@
   .status-pill.incomplete {
     background-color: #78350f;
     color: #fef3c7;
+  }
+
+  .pagination-status {
+    color: #9ca3af;
+  }
+
+  .pagination-button {
+    background-color: #1f2937;
+    border-color: #4b5563;
+    color: #e5e7eb;
+  }
+
+  .pagination-button:hover:not(:disabled) {
+    background-color: #374151;
+    border-color: #6b7280;
   }
 }
 

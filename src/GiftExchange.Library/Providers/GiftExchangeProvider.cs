@@ -48,32 +48,48 @@ public class GiftExchangeProvider
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<(string organizerName, ImmutableList<HatMetaData> hats)> GetHatsAsync(string organizerEmail)
+    public async Task<GetHatsPageResponse> GetHatsAsync(GetHatsPageRequest request)
     {
+        var nobody = new GetHatsPageResponse { OrganizerName = string.Empty, Hats = [], TotalCount = 0 };
+
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
         // The sentinel person holds the empty address, so an empty one here would match it and go on
         // to return the sentinel hat as though it were theirs. Nothing upstream should send one --
         // the address comes from the authorizer -- which is exactly why it is cheap to refuse.
-        if (string.IsNullOrWhiteSpace(organizerEmail))
-            return (string.Empty, []);
+        if (string.IsNullOrWhiteSpace(request.OrganizerEmail))
+            return nobody;
 
         // The name comes from the person, not from the newest hat, so somebody who has signed in
         // but not created an exchange yet is still greeted by name.
         var organizer = await context.Persons
             .AsNoTracking()
-            .Where(person => person.Email == organizerEmail)
+            .Where(person => person.Email == request.OrganizerEmail)
             .Select(person => new { person.PersonId, person.Name })
             .FirstOrDefaultAsync()
             .ConfigureAwait(false);
 
         if (organizer is null)
-            return (string.Empty, []);
+            return nobody;
 
-        var hats = await context.Hats
+        var organizersHats = context.Hats
             .AsNoTracking()
-            .Where(hat => hat.OrganizerPersonId == organizer.PersonId)
+            .Where(hat => hat.OrganizerPersonId == organizer.PersonId);
+
+        var totalCount = await organizersHats
+            .CountAsync()
+            .ConfigureAwait(false);
+
+        if (totalCount == 0)
+            return nobody with { OrganizerName = organizer.Name };
+
+        // The hat id breaks ties between hats created in the same instant (a copy, say), so that a
+        // hat cannot turn up on two pages, or on neither, from one request to the next.
+        var hats = await organizersHats
             .OrderByDescending(hat => hat.CreatedAt)
+            .ThenBy(hat => hat.HatId)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
             .Select(hat => new HatMetaData
             {
                 HatId = hat.HatId,
@@ -84,7 +100,12 @@ public class GiftExchangeProvider
             .ToListAsync()
             .ConfigureAwait(false);
 
-        return (organizer.Name, hats.ToImmutableList());
+        return new GetHatsPageResponse
+        {
+            OrganizerName = organizer.Name,
+            Hats = hats.ToImmutableList(),
+            TotalCount = totalCount
+        };
     }
 
     /// <returns>true if the hat was created, false if the organizer already has one by that name.</returns>

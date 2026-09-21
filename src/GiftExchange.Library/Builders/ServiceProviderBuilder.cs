@@ -128,6 +128,7 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<IValidator<RequestMagicLinkRequest>, RequestMagicLinkRequestValidator>()
                 .AddSingleton<IValidator<RedeemMagicLinkRequest>, RedeemMagicLinkRequestValidator>()
                 .AddSingleton<IValidator<CloseHatRequest>, CloseHatRequestValidator>()
+                .AddSingleton<IValidator<GetHatsRequest>, GetHatsRequestValidator>()
                 .AddSingleton<IValidator<CopyHatRequest>, CopyHatRequestValidator>()
                 .AddSingleton<IValidator<CreateHatRequest>, CreateHatRequestValidator>()
                 .AddSingleton<IValidator<DeleteMyDataRequest>, DeleteMyDataRequestValidator>()
