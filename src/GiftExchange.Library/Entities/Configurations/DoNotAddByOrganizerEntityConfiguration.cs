@@ -31,5 +31,12 @@ internal class DoNotAddByOrganizerEntityConfiguration : IEntityTypeConfiguration
             .HasIndex(block => new { block.EmailNormalized, block.OrganizerEmailNormalized })
             .HasDatabaseName("uq_do_not_add_by_organizer")
             .IsUnique();
+
+        // The other way round, for OrganizerStandingChecker: how many people have refused one
+        // organizer inside a window. The unique index leads with the refusing address and cannot
+        // answer that without a scan.
+        builder
+            .HasIndex(block => new { block.OrganizerEmailNormalized, block.CreatedAt })
+            .HasDatabaseName("idx_do_not_add_by_organizer_organizer");
     }
 }

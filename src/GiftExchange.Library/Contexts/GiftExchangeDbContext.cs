@@ -58,6 +58,8 @@ public sealed class GiftExchangeDbContext : DbContext
 
     public DbSet<DoNotAddAnywhereEntity> DoNotAddAnywhere => Set<DoNotAddAnywhereEntity>();
 
+    public DbSet<OrganizerComplaintEntity> OrganizerComplaints => Set<OrganizerComplaintEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(GiftExchangeDbContext).Assembly);
 }

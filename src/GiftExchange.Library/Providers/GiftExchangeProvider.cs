@@ -1209,6 +1209,143 @@ public class GiftExchangeProvider
         });
 
     /// <summary>
+    /// Remembers a complaint against whoever organizes the exchange this participant is in.
+    /// </summary>
+    /// <remarks>
+    /// Resolved from the participant now, because now is the only time it can be: the participant
+    /// row is what leads to the exchange and the exchange to its organizer, and either may be
+    /// deleted afterwards. A participant already gone by the time the complaint arrives costs the
+    /// attribution and nothing else — the complainant is blocked everywhere regardless, by
+    /// <c>DeliveryEventsService</c>, before this is asked.
+    ///
+    /// An organizer complaining about their own exchange is not written. They are a participant in
+    /// it, so the event is well formed, but it says nothing about how they treat anybody else.
+    ///
+    /// Idempotent in the way <see cref="RecordDoNotAddAsync"/> is: a read guards the insert for the
+    /// sequential case, and the unique index settles two redeliveries racing each other.
+    /// </remarks>
+    /// <returns>Whether a row was written. False is an ordinary outcome, not a failure.</returns>
+    internal async Task<bool> RecordOrganizerComplaintAsync(RecordOrganizerComplaintRequest request)
+    {
+        var email = request.Email.ToNormalizedEmail();
+
+        if (request.ParticipantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+            return false;
+
+        try
+        {
+            return await RecordOrganizerComplaintCoreAsync(request, email).ConfigureAwait(false);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            _logger.LogInformation("A complaint against this organizer was already recorded.");
+            return false;
+        }
+    }
+
+    private async Task<bool> RecordOrganizerComplaintCoreAsync(RecordOrganizerComplaintRequest request, string email)
+    {
+        var written = false;
+
+        await InTransactionAsync(async context =>
+        {
+            // Reset rather than accumulated, for the reason TryRecordDeliveryEventAsync gives.
+            written = false;
+
+            var organizerEmail = await context.Participants
+                .AsNoTracking()
+                .Where(participant => participant.ParticipantId == request.ParticipantId)
+                .Select(participant => participant.Hat.Organizer.Email)
+                .SingleOrDefaultAsync()
+                .ConfigureAwait(false);
+
+            if (organizerEmail is null)
+            {
+                _logger.LogWarning(
+                    "A complaint names participant {ParticipantId}, who is no longer in any exchange; it cannot be put against an organizer.",
+                    request.ParticipantId);
+                return;
+            }
+
+            var organizerEmailNormalized = organizerEmail.ToNormalizedEmail();
+
+            if (organizerEmailNormalized == email)
+                return;
+
+            var alreadyRecorded = await context.OrganizerComplaints
+                .AnyAsync(complaint => complaint.OrganizerEmailNormalized == organizerEmailNormalized
+                                       && complaint.EmailNormalized == email)
+                .ConfigureAwait(false);
+
+            if (alreadyRecorded)
+                return;
+
+            context.OrganizerComplaints.Add(new OrganizerComplaintEntity
+            {
+                OrganizerComplaintId = Guid.CreateVersion7(),
+                OrganizerEmailNormalized = organizerEmailNormalized,
+                EmailNormalized = email,
+                ComplainedAt = request.ComplainedAt
+            });
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            written = true;
+        }).ConfigureAwait(false);
+
+        return written;
+    }
+
+    /// <summary>
+    /// How many distinct people have turned this organizer's mail away since a moment, on behalf of
+    /// <c>OrganizerStandingChecker</c>.
+    /// </summary>
+    /// <remarks>
+    /// Two tables, both keyed by the organizer's address and both surviving the deletion of the
+    /// exchanges that caused them, which is what makes them fit to judge by. Deliberately not
+    /// consulted: <c>participant_email_delivery</c> and <c>do_not_add_to_exchange</c>. The first
+    /// goes when the exchange does. The second is somebody leaving one exchange, which people do
+    /// for every reason under the sun and which says little about the organizer.
+    ///
+    /// The addresses come back rather than two COUNTs, because the second number is a union of the
+    /// two lists and the database cannot take a union of counts. Both lists are small — an
+    /// organizer whose list is long has been refused sending well before it got that way.
+    /// </remarks>
+    internal async Task<CountOrganizerRefusalsResponse> CountOrganizerRefusalsAsync(
+        CountOrganizerRefusalsRequest request
+    )
+    {
+        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+
+        if (string.IsNullOrWhiteSpace(organizerEmail))
+            return new CountOrganizerRefusalsResponse { Complaints = 0, Refusals = 0 };
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var complainants = await context.OrganizerComplaints
+            .AsNoTracking()
+            .Where(complaint => complaint.OrganizerEmailNormalized == organizerEmail
+                                && complaint.ComplainedAt >= request.Since)
+            .Select(complaint => complaint.EmailNormalized)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        var refusers = await context.DoNotAddByOrganizer
+            .AsNoTracking()
+            .Where(block => block.OrganizerEmailNormalized == organizerEmail && block.CreatedAt >= request.Since)
+            .Select(block => block.EmailNormalized)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return new CountOrganizerRefusalsResponse
+        {
+            // Already distinct, by uq_organizer_complaint; Distinct is here so that stays true if
+            // the index ever changes shape.
+            Complaints = complainants.Distinct().Count(),
+            Refusals = complainants.Union(refusers).Count()
+        };
+    }
+
+    /// <summary>
     /// The participant id behind each address in a hat, so that an outbound message can be tagged
     /// with who it is going to.
     /// </summary>
