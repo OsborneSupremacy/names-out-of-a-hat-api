@@ -1,4 +1,5 @@
 using GiftExchange.Library.Contexts;
+using GiftExchange.Library.Entities;
 using GiftExchange.Library.Utility;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -71,7 +72,8 @@ public class EditParticipantAddressServiceTests
             new CompletionEmailCompositionService(),
             _queue,
             _throttle,
-            new DoNotAddService(_provider));
+            new DoNotAddService(_provider),
+            serviceProvider.GetRequiredService<OrganizerStandingChecker>());
     }
 
     [Fact]
@@ -330,6 +332,65 @@ public class EditParticipantAddressServiceTests
         _queued.Should().BeEmpty();
 
         await AddressShouldBeAsync(exchange, exchange.TargetEmail);
+    }
+
+    /// <summary>
+    /// A resend is a send, and without the check a suspended organizer could reach a new stranger
+    /// with every correction.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheOrganizerIsSuspended_NothingChangesAndNothingIsSent()
+    {
+        // arrange
+        var exchange = await SeedAsync(HatStatus.InvitationsSent);
+        await SuspendAsync(exchange.OrganizerEmail);
+
+        // act
+        var result = await _sut.EditParticipantAddressAsync(Request(exchange, "fixed@example.com"));
+
+        // assert
+        result.IsFaulted.Should().BeTrue();
+        result.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        _queued.Should().BeEmpty();
+
+        await AddressShouldBeAsync(exchange, exchange.TargetEmail);
+        await _throttle.DidNotReceive()
+            .TryReserveAddressChangeSlotAsync(Arg.Any<ReserveAddressChangeSlotRequest>());
+    }
+
+    /// <summary>
+    /// Nothing is sent before invitations go out, so a suspended organizer can still fix a typo.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheOrganizerIsSuspended_AnAddressCanStillBeFixedBeforeAnythingIsSent()
+    {
+        // arrange
+        var exchange = await SeedAsync(HatStatus.NamesAssigned);
+        await SuspendAsync(exchange.OrganizerEmail);
+
+        // act
+        var result = await _sut.EditParticipantAddressAsync(Request(exchange, "fixed@example.com"));
+
+        // assert
+        result.IsFaulted.Should().BeFalse();
+        await AddressShouldBeAsync(exchange, "fixed@example.com");
+    }
+
+    private async Task SuspendAsync(string organizerEmail)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        context.OrganizerComplaints.AddRange(Enumerable
+            .Range(0, OrganizerStandingChecker.SuspendAtComplaints)
+            .Select(_ => new OrganizerComplaintEntity
+            {
+                OrganizerComplaintId = Guid.CreateVersion7(),
+                OrganizerEmailNormalized = organizerEmail.Trim().ToLowerInvariant(),
+                EmailNormalized = $"{Guid.NewGuid():N}@example.com",
+                ComplainedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            }));
+
+        await context.SaveChangesAsync();
     }
 
     /// <summary>

@@ -1329,3 +1329,65 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: REVOKE SELECT, INSERT, DELETE ON offered_gift_idea FROM giftexchange_user
+
+  - changeSet:
+      id: organizer_complaint--0001
+      author: ben
+      comment: >
+        Spam complaints remembered against the organizer whose exchange drew them, so that a run of
+        complaints can stop that organizer sending more. participant_email_delivery records the same
+        complaints, but its rows go with the exchange, which would let an organizer clear their
+        record by deleting what they sent.
+      changes:
+        - sqlFile:
+            path: tables/organizer_complaint--0001.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: DROP TABLE organizer_complaint
+
+  - changeSet:
+      id: uq_organizer_complaint--0001
+      author: ben
+      comment: >
+        One row per complainant per organizer, which is both what the send path counts -- distinct
+        people, so one person complaining about three messages is one complaint -- and what makes a
+        redelivered event a no-op. The organizer's address leads, unlike the do-not-add lists,
+        because the only question this table is asked is "how many against this organizer".
+      changes:
+        - sql:
+            sql: CREATE UNIQUE INDEX ASYNC uq_organizer_complaint ON organizer_complaint (organizer_email_normalized, email_normalized)
+      rollback:
+        - sql:
+            sql: DROP INDEX uq_organizer_complaint
+
+  - changeSet:
+      id: idx_do_not_add_by_organizer_organizer--0001
+      author: ben
+      comment: >
+        The send path counts refusals of one organizer, and uq_do_not_add_by_organizer leads with
+        the refusing address, so it cannot answer that without a scan. Ordered by created_at because
+        the count is over a window.
+      changes:
+        - sql:
+            sql: CREATE INDEX ASYNC idx_do_not_add_by_organizer_organizer ON do_not_add_by_organizer (organizer_email_normalized, created_at)
+      rollback:
+        - sql:
+            sql: DROP INDEX idx_do_not_add_by_organizer_organizer
+
+  - changeSet:
+      id: giftexchange_user--0017
+      author: ben
+      comment: >
+        SELECT and INSERT on organizer_complaint, and deliberately nothing else: see the file. A
+        separate changeset rather than an addition to an earlier grant, whose checksum covers the
+        tables it named when it ran.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0017.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: REVOKE SELECT, INSERT ON organizer_complaint FROM giftexchange_user

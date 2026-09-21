@@ -248,6 +248,84 @@ public class DeliveryEventsServiceTests
     }
 
     [Fact]
+    public async Task AComplaint_IsRememberedAgainstTheOrganizerOnce()
+    {
+        // arrange
+        var (hat, participantId, email) = await ParticipantAsync();
+        var messageId = MessageId();
+
+        // act: redelivered, as SQS is entitled to do.
+        await _sut.ProcessRecordAsync(Message(Complaint(messageId, participantId, email.ToUpperInvariant())));
+        await _sut.ProcessRecordAsync(Message(Complaint(messageId, participantId, email.ToUpperInvariant())));
+
+        // assert
+        var complaint = (await ComplaintsAgainstAsync(hat.OrganizerEmail)).Should().ContainSingle().Subject;
+        complaint.EmailNormalized.Should().Be(email.Trim().ToLowerInvariant());
+        complaint.ComplainedAt.Should().Be(
+            DateTimeOffset.Parse("2026-08-29T09:00:00.000Z"),
+            "the window is measured from when the complaint was made, not when it reached us");
+    }
+
+    /// <summary>
+    /// The reason the table exists: an organizer must not be able to clear their record by
+    /// deleting the exchange that earned it.
+    /// </summary>
+    [Fact]
+    public async Task AComplaint_OutlivesTheExchangeThatDrewIt()
+    {
+        // arrange
+        var (hat, participantId, email) = await ParticipantAsync();
+        await _sut.ProcessRecordAsync(Message(Complaint(MessageId(), participantId, email)));
+
+        // act
+        await _provider.DeleteHatAsync(new DeleteHatRequest { OrganizerEmail = hat.OrganizerEmail, HatId = hat.HatId });
+
+        // assert
+        (await ComplaintsAgainstAsync(hat.OrganizerEmail)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ANotSpamReport_IsNotRememberedAgainstTheOrganizer()
+    {
+        // arrange
+        var (hat, participantId, email) = await ParticipantAsync();
+
+        // act
+        await _sut.ProcessRecordAsync(Message(Complaint(MessageId(), participantId, email, feedbackType: "not-spam")));
+
+        // assert
+        (await ComplaintsAgainstAsync(hat.OrganizerEmail)).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// An organizer is a participant in their own exchange, so they can complain about it. That
+    /// says nothing about how they treat anybody else.
+    /// </summary>
+    [Fact]
+    public async Task AnOrganizerComplainingAboutTheirOwnExchange_IsNotHeldAgainstThem()
+    {
+        // arrange
+        var (hat, _, _) = await ParticipantAsync();
+
+        await _provider.CreateParticipantAsync(
+            _participantFaker.Generate() with
+            {
+                HatId = hat.HatId,
+                OrganizerEmail = hat.OrganizerEmail,
+                Email = hat.OrganizerEmail
+            },
+            []);
+
+        var organizerParticipantId = (await _provider.GetParticipantIdsByEmailAsync(hat.HatId))[hat.OrganizerEmail];
+
+        // act
+        await _sut.ProcessRecordAsync(Message(Complaint(MessageId(), organizerParticipantId, hat.OrganizerEmail)));
+
+        // assert
+        (await ComplaintsAgainstAsync(hat.OrganizerEmail)).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task AnEventWithNoParticipantTag_IsIgnoredRatherThanThrown()
     {
         // arrange: a send from some future code path that forgot to tag itself.
@@ -479,6 +557,18 @@ public class DeliveryEventsServiceTests
             }
           }
           """;
+
+    private async Task<List<OrganizerComplaintEntity>> ComplaintsAgainstAsync(string organizerEmail)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var normalized = organizerEmail.Trim().ToLowerInvariant();
+
+        return await context.OrganizerComplaints
+            .AsNoTracking()
+            .Where(complaint => complaint.OrganizerEmailNormalized == normalized)
+            .ToListAsync();
+    }
 
     private async Task<int> BlockedAnywhereCountAsync(string email)
     {

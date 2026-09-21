@@ -51,6 +51,8 @@ internal class EditParticipantAddressService : IApiGatewayHandler
 
     private readonly DoNotAddService _doNotAddService;
 
+    private readonly OrganizerStandingChecker _organizerStandingChecker;
+
     public EditParticipantAddressService(
         ILogger<EditParticipantAddressService> logger,
         ApiGatewayAdapter adapter,
@@ -60,7 +62,8 @@ internal class EditParticipantAddressService : IApiGatewayHandler
         CompletionEmailCompositionService completionEmailCompositionService,
         IEmailQueue emailQueue,
         IReplyThrottleProvider throttleProvider,
-        DoNotAddService doNotAddService
+        DoNotAddService doNotAddService,
+        OrganizerStandingChecker organizerStandingChecker
     )
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -72,6 +75,7 @@ internal class EditParticipantAddressService : IApiGatewayHandler
         _emailQueue = emailQueue ?? throw new ArgumentNullException(nameof(emailQueue));
         _throttleProvider = throttleProvider ?? throw new ArgumentNullException(nameof(throttleProvider));
         _doNotAddService = doNotAddService ?? throw new ArgumentNullException(nameof(doNotAddService));
+        _organizerStandingChecker = organizerStandingChecker ?? throw new ArgumentNullException(nameof(organizerStandingChecker));
     }
 
     public Task<APIGatewayProxyResponse> FunctionHandler(
@@ -136,6 +140,19 @@ internal class EditParticipantAddressService : IApiGatewayHandler
         // before invitations go out mails nobody and needs no limit.
         if (messageType != EmailMessageType.Unspecified)
         {
+            // This resends to an address the organizer has just typed, which makes it a send path
+            // like any other: without the check, a suspended organizer could mail a stranger per
+            // correction. Only here, where something would go out, so a suspended organizer can
+            // still fix an address before invitations are sent.
+            var standing = await _organizerStandingChecker
+                .CheckAsync(request.OrganizerEmail)
+                .ConfigureAwait(false);
+
+            if (!standing.MaySend)
+                return new Result<EditParticipantAddressResponse>(
+                    new InvalidOperationException(standing.RefusalMessage),
+                    standing.RefusalStatusCode);
+
             var participantIds = await _giftExchangeProvider
                 .GetParticipantIdsByEmailAsync(request.HatId)
                 .ConfigureAwait(false);

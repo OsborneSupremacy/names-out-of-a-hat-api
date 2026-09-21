@@ -15,13 +15,16 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
 
     private readonly HatPreconditionValidator _hatPreconditionValidator;
 
+    private readonly OrganizerStandingChecker _organizerStandingChecker;
+
     public EnqueueInvitationsService(
         GiftExchangeProvider giftExchangeProvider,
         ApiGatewayAdapter adapter,
         HatPreconditionValidator hatPreconditionValidator,
         EmailCompositionService emailCompositionService,
         IEmailQueue emailQueue,
-        ISchedulerService schedulerService
+        ISchedulerService schedulerService,
+        OrganizerStandingChecker organizerStandingChecker
         )
     {
         _giftExchangeProvider = giftExchangeProvider ?? throw new ArgumentNullException(nameof(giftExchangeProvider));
@@ -31,6 +34,7 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
             emailCompositionService ?? throw new ArgumentNullException(nameof(emailCompositionService));
         _emailQueue = emailQueue ?? throw new ArgumentNullException(nameof(emailQueue));
         _schedulerService = schedulerService ?? throw new ArgumentNullException(nameof(schedulerService));
+        _organizerStandingChecker = organizerStandingChecker ?? throw new ArgumentNullException(nameof(organizerStandingChecker));
     }
 
     // The address is read from the request context here rather than being carried on the request
@@ -59,6 +63,18 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
             return new Result<StatusCodeOnlyResponse>(
                 new AggregateException(hatPreconditionResult.PreconditionFailureMessage.FailureMessage),
                 hatPreconditionResult.PreconditionFailureMessage.StatusCode);
+
+        // After the preconditions, so an organizer asking about somebody else's hat is told it does
+        // not exist rather than anything about their own standing. Before any token is issued, so a
+        // refused send leaves nothing behind that looks as though it went.
+        var standing = await _organizerStandingChecker
+            .CheckAsync(request.OrganizerEmail)
+            .ConfigureAwait(false);
+
+        if (!standing.MaySend)
+            return new Result<StatusCodeOnlyResponse>(
+                new InvalidOperationException(standing.RefusalMessage),
+                standing.RefusalStatusCode);
 
         var hat = hatPreconditionResult.Hat;
 

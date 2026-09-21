@@ -18,7 +18,8 @@ namespace GiftExchange.Library.Services;
 ///
 /// The one thing it does beyond recording is act on a complaint: whoever marked a message as spam is
 /// put on the do-not-add-anywhere list, so the next organizer is stopped before sending rather than
-/// after.
+/// after, and the complaint is remembered against the organizer whose exchange sent it, so that one
+/// who draws enough of them is stopped too.
 /// </remarks>
 [UsedImplicitly]
 internal class DeliveryEventsService
@@ -101,6 +102,9 @@ internal class DeliveryEventsService
             return false;
         }
 
+        if (status == DeliveryStatus.Complained)
+            await AttributeComplaintAsync(notification, participantId).ConfigureAwait(false);
+
         var written = await _giftExchangeProvider
             .RecordDeliveryEventAsync(new ParticipantEmailDelivery
             {
@@ -144,21 +148,9 @@ internal class DeliveryEventsService
     /// </remarks>
     private async Task BlockComplainantsAsync(SesDeliveryEvent notification)
     {
-        if (notification.Complaint is not { } complaint)
-            return;
+        var feedbackType = notification.Complaint?.ComplaintFeedbackType ?? string.Empty;
 
-        if (string.Equals(complaint.ComplaintFeedbackType.TrimNullSafe(), "not-spam", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        // Null rather than empty when the field is absent, whatever the initializer says, so the
-        // guard is needed. An event naming nobody blocks nobody.
-        var complainants = (complaint.ComplainedRecipients ?? [])
-            .Select(recipient => recipient.EmailAddress)
-            .Where(email => !string.IsNullOrWhiteSpace(email))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        foreach (var email in complainants)
+        foreach (var email in ComplainantsOf(notification))
         {
             await _giftExchangeProvider
                 .RecordDoNotAddAsync(new RecordDoNotAddRequest
@@ -176,8 +168,51 @@ internal class DeliveryEventsService
             _logger.LogWarning(
                 "Message {MessageId} was marked as spam ({FeedbackType}); the recipient can no longer be added to any exchange.",
                 notification.Mail.MessageId,
-                string.IsNullOrWhiteSpace(complaint.ComplaintFeedbackType) ? "no feedback type" : complaint.ComplaintFeedbackType);
+                string.IsNullOrWhiteSpace(feedbackType) ? "no feedback type" : feedbackType);
         }
+    }
+
+    /// <summary>
+    /// Remembers the complaint against the organizer of the exchange the message came from.
+    /// </summary>
+    /// <remarks>
+    /// After the block, and only when the event names a participant: the block is about the address
+    /// and needs nothing else, but finding an organizer needs the tag. Throws on failure for the
+    /// same reason the block does — a retried event is harmless, and a complaint recorded without
+    /// its attribution is one an organizer never answers for.
+    /// </remarks>
+    private async Task AttributeComplaintAsync(SesDeliveryEvent notification, Guid participantId)
+    {
+        foreach (var email in ComplainantsOf(notification))
+            await _giftExchangeProvider
+                .RecordOrganizerComplaintAsync(new RecordOrganizerComplaintRequest
+                {
+                    ParticipantId = participantId,
+                    Email = email,
+                    ComplainedAt = OccurredAtOf(notification, DeliveryStatus.Complained)
+                })
+                .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Everybody a complaint event says marked the message as spam, or nobody if it says the
+    /// opposite. See <see cref="BlockComplainantsAsync"/> for why only "not-spam" is the opposite.
+    /// </summary>
+    private static ImmutableList<string> ComplainantsOf(SesDeliveryEvent notification)
+    {
+        if (notification.Complaint is not { } complaint)
+            return [];
+
+        if (string.Equals(complaint.ComplaintFeedbackType.TrimNullSafe(), "not-spam", StringComparison.OrdinalIgnoreCase))
+            return [];
+
+        // Null rather than empty when the field is absent, whatever the initializer says, so the
+        // guard is needed. An event naming nobody blocks nobody.
+        return (complaint.ComplainedRecipients ?? [])
+            .Select(recipient => recipient.EmailAddress)
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToImmutableList();
     }
 
     /// <summary>
