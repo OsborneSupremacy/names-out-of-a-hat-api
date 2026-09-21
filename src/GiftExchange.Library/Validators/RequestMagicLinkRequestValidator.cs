@@ -7,6 +7,8 @@ public class RequestMagicLinkRequestValidator : AbstractValidator<RequestMagicLi
         RuleFor(x => x.Email)
             .NotEmpty()
             .EmailAddress()
-            .Length(5, 254);
+            .Length(5, 254)
+            .Must(email => !DisposableEmailDomains.IsDisposable(email))
+            .WithMessage(DisposableEmailDomains.RejectionMessage);
     }
 }

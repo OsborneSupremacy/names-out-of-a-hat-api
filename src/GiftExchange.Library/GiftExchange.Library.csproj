@@ -41,6 +41,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\disposable_email_blocklist.conf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="GiftExchange.Library.Tests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>

@@ -1,0 +1,85 @@
+name: Update Disposable Email Domains
+
+# Refreshes the throwaway-domain list DisposableEmailDomains reads, as a pull request rather than a
+# push. Upstream changes most days, so this runs weekly: often enough to keep up, seldom enough that
+# the PRs are worth opening. A merge ships nothing by itself; the list goes live with the next
+# deploy of the API.
+on:
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  SOURCE_URL: https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/main/disposable_email_blocklist.conf
+  LIST_PATH: src/GiftExchange.Library/Resources/disposable_email_blocklist.conf
+  BRANCH: automation/disposable-email-domains
+
+jobs:
+  update:
+    name: Update list
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download list
+        run: curl --fail --silent --show-error --location "$SOURCE_URL" --output /tmp/blocklist.conf
+
+      # A truncated download or an upstream accident would otherwise arrive as a PR that quietly
+      # lets every throwaway address back in, or blocks addresses that are not domains at all.
+      - name: Sanity-check list
+        run: |
+          lines=$(wc -l < /tmp/blocklist.conf)
+          if [ "$lines" -lt 1000 ]; then
+            echo "::error::Only $lines domains downloaded; refusing to replace the list."
+            exit 1
+          fi
+
+          if LC_ALL=C grep -vqE '^[a-z0-9.-]+$' /tmp/blocklist.conf; then
+            echo "::error::The download contains lines that are not bare domains."
+            exit 1
+          fi
+
+          for domain in gmail.com outlook.com hotmail.com yahoo.com icloud.com privaterelay.appleid.com; do
+            if grep -qxF "$domain" /tmp/blocklist.conf; then
+              echo "::error::$domain is on the list; refusing to block a mainstream provider."
+              exit 1
+            fi
+          done
+
+      - name: Open or update pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp /tmp/blocklist.conf "$LIST_PATH"
+
+          if git diff --quiet -- "$LIST_PATH"; then
+            echo "The list is already up to date."
+            exit 0
+          fi
+
+          added=$(git diff --unified=0 -- "$LIST_PATH" | grep -c '^+[^+]' || true)
+          removed=$(git diff --unified=0 -- "$LIST_PATH" | grep -c '^-[^-]' || true)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "$BRANCH"
+          git commit --all --message "chore: Update disposable email domain list (+$added / -$removed)"
+          git push --force origin "$BRANCH"
+
+          body="Weekly refresh of the throwaway-domain list from [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains): $added added, $removed removed. The list goes live with the next deploy of the API."
+
+          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -qx OPEN; then
+            gh pr edit "$BRANCH" --title "Update disposable email domain list" --body "$body"
+          else
+            gh pr create --head "$BRANCH" --base main --title "Update disposable email domain list" --body "$body"
+          fi

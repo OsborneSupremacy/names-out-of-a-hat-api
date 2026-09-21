@@ -65,6 +65,13 @@ export async function requestMagicLink(email: string): Promise<void> {
     body: JSON.stringify({ email }),
   })
 
+  // A 400 is about the address itself, such as one from a temporary email service, and trying
+  // again won't fix it, so show the reason the server gave.
+  if (response.status === 400) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.message || 'Please check your email address and try again.')
+  }
+
   if (!response.ok) {
     throw new Error('Could not send the sign-in link. Please try again in a moment.')
   }
