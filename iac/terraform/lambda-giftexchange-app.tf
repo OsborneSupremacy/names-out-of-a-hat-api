@@ -162,9 +162,14 @@ resource "aws_iam_role_policy" "giftexchange_app_scheduler_policy" {
           "scheduler:CreateSchedule",
           "scheduler:UpdateSchedule"
         ]
+        # Both groups the send path writes to. The undeliverable-invitations group was left out
+        # when it was added, and every send from then on failed to schedule its delivery check
+        # without failing the send, so nothing but the log noticed.
         Resource = [
           aws_scheduler_schedule_group.cooled-off.arn,
-          "arn:aws:scheduler:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:schedule/${aws_scheduler_schedule_group.cooled-off.name}/*"
+          "arn:aws:scheduler:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:schedule/${aws_scheduler_schedule_group.cooled-off.name}/*",
+          aws_scheduler_schedule_group.undeliverable-invitations.arn,
+          "arn:aws:scheduler:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:schedule/${aws_scheduler_schedule_group.undeliverable-invitations.name}/*"
         ]
       },
       {
@@ -173,7 +178,8 @@ resource "aws_iam_role_policy" "giftexchange_app_scheduler_policy" {
           "iam:PassRole"
         ]
         Resource = [
-          aws_iam_role.cooled-off-scheduler-execution-role.arn
+          aws_iam_role.cooled-off-scheduler-execution-role.arn,
+          aws_iam_role.undeliverable-invitations-scheduler-execution-role.arn
         ]
       }
     ]
