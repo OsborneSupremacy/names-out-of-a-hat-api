@@ -166,6 +166,14 @@ internal static class ServiceProviderBuilder
                 .AddKeyedSingleton<IApiGatewayHandler, ShareGiftIdeasService>("get/ideas/{token}")
                 .AddKeyedSingleton<IApiGatewayHandler, ShareGiftIdeasService>("post/ideas/{token}")
 
+                // Offering ideas about somebody else, which is the same token on a different
+                // resource: /ideas settles the subject from the token, and here the subject is
+                // chosen on the page. A resource of its own rather than a mode of the service
+                // above, because that one tells its two paths apart by which table the token
+                // resolved in, and this is neither of them.
+                .AddKeyedSingleton<IApiGatewayHandler, OfferGiftIdeasService>("get/offer/{token}")
+                .AddKeyedSingleton<IApiGatewayHandler, OfferGiftIdeasService>("post/offer/{token}")
+
                 // The same split, for the same reason, and here the stakes of getting it wrong are
                 // higher: a GET that acted would remove somebody from an exchange because their
                 // mail provider checked a link.
@@ -238,6 +246,7 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<DataDeletionQueueHandlerService>()
                 .AddSingleton<AskPageComposer>()
                 .AddSingleton<ShareIdeasPageComposer>()
+                .AddSingleton<OfferIdeasPageComposer>()
                 .AddSingleton<LeavePageComposer>()
                 .AddSingleton<LeaveEmailCompositionService>()
                 .AddSingleton<DoNotAddService>()

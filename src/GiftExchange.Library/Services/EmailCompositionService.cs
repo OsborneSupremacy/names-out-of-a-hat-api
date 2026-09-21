@@ -45,11 +45,15 @@ public class EmailCompositionService
 
         if (!string.IsNullOrWhiteSpace(request.GiftIdeasToken))
         {
-            // Ask first, then share. The order matches what somebody opening this actually wants
-            // to do: they have just been told a name, and the immediate question is what that
-            // person wants, not what they themselves want.
+            // Ask first, then share, then offer. The order matches what somebody opening this
+            // actually wants to do: they have just been told a name, and the immediate question is
+            // what that person wants, not what they themselves want. Offering ideas about somebody
+            // else comes last because it is the only one of the three that is not about the
+            // reader's own exchange with their pick -- it is a favour to somebody they will never
+            // be told the name of.
             lines.Add(GiftIdeaEmailCompositionService.BuildAskBlock(pickedName, request.GiftIdeasToken));
             lines.Add(GiftIdeaEmailCompositionService.BuildShareGiftIdeasBlock(request.GiftIdeasToken));
+            lines.Add(GiftIdeaEmailCompositionService.BuildOfferIdeasBlock(request.GiftIdeasToken));
         }
 
         lines.AddRange([

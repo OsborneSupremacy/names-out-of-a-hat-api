@@ -1,6 +1,3 @@
-using System.Web;
-using MimeKit;
-
 namespace GiftExchange.Library.Services;
 
 /// <summary>
@@ -325,12 +322,11 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     /// writer asked for it to be held back.
     /// </summary>
     /// <remarks>
-    /// The form posts multipart/form-data, for the size reason
-    /// <see cref="GiftIdeaContentPolicy.MaxLength"/> gives. A URL-encoded body is read too, since it
-    /// is what a form without an enctype sends and there is no reason to refuse one.
+    /// Reading the body itself is <see cref="FormBody"/>'s job, shared with the page for offering
+    /// ideas about somebody else. What stays here is what this form means by what it found.
     ///
     /// Browsers post a textarea's line breaks as CRLF. Stored as LF, so the forward and the echo
-    /// break lines the same way whatever sent them. An unreadable body is treated as an empty one,
+    /// break lines the same way whatever sent them. An unreadable body arrives as an empty one,
     /// which the content policy then reports as "write something".
     ///
     /// The checkbox is read by whether its field is there at all, which is what a browser says about
@@ -340,108 +336,19 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     /// </remarks>
     private static SharedIdeasSubmission ParseSubmission(APIGatewayProxyRequest request)
     {
-        byte[] body;
-
-        try
-        {
-            body = request.IsBase64Encoded
-                ? Convert.FromBase64String(request.Body ?? string.Empty)
-                : Encoding.UTF8.GetBytes(request.Body ?? string.Empty);
-        }
-        catch (FormatException)
-        {
-            return Nothing;
-        }
-
-        var contentType = FindHeader(request, "Content-Type");
-
-        var fields = contentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase)
-            ? ReadMultipartFields(body, contentType)
-            : ReadUrlEncodedFields(body);
+        var fields = FormBody.Read(request);
 
         return new SharedIdeasSubmission(
-            fields.Ideas.Replace("\r\n", "\n").Replace('\r', '\n').Trim(),
-            fields.HoldUntilAsked);
+            fields.First(ShareIdeasPageComposer.IdeasField).Replace("\r\n", "\n").Replace('\r', '\n').Trim(),
+            fields.Has(ShareIdeasPageComposer.HoldUntilAskedField));
     }
 
     /// <summary>What the two fields carry, before the text has been tidied.</summary>
     /// <remarks>
     /// Kept inside this class rather than put in Messaging, because it never crosses a boundary: it
-    /// exists so that one pass over the body answers both questions, and the parse of a multipart
-    /// body is expensive enough not to want twice.
+    /// exists so that the two answers this form gives travel together.
     /// </remarks>
     private readonly record struct SharedIdeasSubmission(string Ideas, bool HoldUntilAsked);
-
-    /// <summary>A body that said nothing, which the content policy reports as "write something".</summary>
-    private static SharedIdeasSubmission Nothing => new(string.Empty, false);
-
-    /// <summary>
-    /// Both fields out of a multipart/form-data body.
-    /// </summary>
-    /// <remarks>
-    /// MimeKit is already here for sending mail, and a form post is a MIME multipart with a
-    /// Content-Disposition on each part. The request's Content-Type header carries the boundary,
-    /// so it is put back in front of the body to make a complete entity to parse.
-    ///
-    /// Decoded as UTF-8 explicitly. Browsers send form fields in the page's encoding and name no
-    /// charset on the part, and the page declares UTF-8.
-    /// </remarks>
-    private static SharedIdeasSubmission ReadMultipartFields(byte[] body, string contentType)
-    {
-        try
-        {
-            using var stream = new MemoryStream();
-            stream.Write(Encoding.ASCII.GetBytes($"Content-Type: {contentType}\r\n\r\n"));
-            stream.Write(body);
-            stream.Position = 0;
-
-            if (MimeEntity.Load(stream) is not Multipart multipart)
-                return Nothing;
-
-            var parts = multipart.OfType<TextPart>().ToList();
-
-            var ideas = FindPart(parts, ShareIdeasPageComposer.IdeasField);
-
-            return new SharedIdeasSubmission(
-                ideas?.GetText(Encoding.UTF8) ?? string.Empty,
-                FindPart(parts, ShareIdeasPageComposer.HoldUntilAskedField) is not null);
-        }
-        catch (Exception exception) when (exception is FormatException or ParseException)
-        {
-            return Nothing;
-        }
-    }
-
-    private static TextPart? FindPart(IEnumerable<TextPart> parts, string name) =>
-        parts.FirstOrDefault(part =>
-            part.ContentDisposition is not null
-            && part.ContentDisposition.Parameters.TryGetValue("name", out string? partName)
-            && partName == name);
-
-    /// <summary>
-    /// Both fields out of a URL-encoded body, which is what a form with no enctype sends.
-    /// </summary>
-    private static SharedIdeasSubmission ReadUrlEncodedFields(byte[] body)
-    {
-        var fields = HttpUtility.ParseQueryString(Encoding.UTF8.GetString(body));
-
-        return new SharedIdeasSubmission(
-            fields.Get(ShareIdeasPageComposer.IdeasField) ?? string.Empty,
-            fields.AllKeys.Contains(ShareIdeasPageComposer.HoldUntilAskedField));
-    }
-
-    /// <summary>
-    /// A request header by name, ignoring case, or the empty string.
-    /// </summary>
-    /// <remarks>
-    /// Case-insensitive because API Gateway passes header names through as the client sent them,
-    /// and HTTP/2 clients send them lower-cased.
-    /// </remarks>
-    private static string FindHeader(APIGatewayProxyRequest request, string name) =>
-        request.Headers?
-            .FirstOrDefault(header => header.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
-            .Value
-        ?? string.Empty;
 
     /// <summary>
     /// Every outcome is a 200 carrying a page, for the reason <see cref="AskForGiftIdeasService"/>

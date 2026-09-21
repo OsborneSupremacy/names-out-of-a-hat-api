@@ -661,6 +661,15 @@ public class GiftExchangeProvider
             .ExecuteDeleteAsync()
             .ConfigureAwait(false);
 
+        // Ideas offered about somebody without being asked. The author alone reaches all of them,
+        // on the same grounds: both participants an offer names belong to the hat that is going.
+        // Not reachable through the asks above -- an offer has none, which is the whole reason it
+        // has a table of its own.
+        await context.OfferedGiftIdeas
+            .Where(offer => participantIds.Contains(offer.AuthorParticipantId))
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
+
         await context.Participants
             .Where(participant => participant.HatId == hatId)
             .ExecuteDeleteAsync()
@@ -1976,6 +1985,165 @@ public class GiftExchangeProvider
     }
 
     /// <summary>
+    /// Everybody in a hat that a participant could offer gift ideas about: all of them but
+    /// themselves and their own pick.
+    /// </summary>
+    /// <remarks>
+    /// Their own pick is left out rather than marked, which is where this parts company with
+    /// <see cref="ListAskCandidatesAsync"/>. Ideas about your own pick are routed to whoever drew
+    /// them, which is you, so it is not a choice to offer and explain. Nothing is given away by the
+    /// omission — the sharer is the one person who already knows both names that are missing.
+    ///
+    /// A participant who has not drawn anybody holds the all-zero id, which matches no row, so they
+    /// are offered everybody else. That is right: nobody can route back to them.
+    ///
+    /// Sorted by name alone, with no pick to put first.
+    ///
+    /// Names only, no addresses: see <see cref="OfferCandidate"/>.
+    /// </remarks>
+    public async Task<ImmutableList<OfferCandidate>> ListOfferCandidatesAsync(
+        Guid hatId,
+        Guid sharerParticipantId
+    )
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var sharer = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.ParticipantId == sharerParticipantId)
+            .Select(participant => new { participant.PickedRecipientParticipantId })
+            .SingleOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        if (sharer is null)
+            return [];
+
+        var candidates = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.HatId == hatId
+                                  && participant.ParticipantId != sharerParticipantId
+                                  && participant.ParticipantId != sharer.PickedRecipientParticipantId)
+            .Select(participant => new { participant.ParticipantId, participant.Person.Name })
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return
+        [
+            .. candidates
+                .Select(candidate => new OfferCandidate
+                {
+                    ParticipantId = candidate.ParticipantId,
+                    Name = candidate.Name
+                })
+                .OrderBy(candidate => candidate.Name, StringComparer.CurrentCultureIgnoreCase)
+        ];
+    }
+
+    /// <summary>
+    /// Resolves the subject somebody chose to offer ideas about, and to the one person those ideas
+    /// are for.
+    /// </summary>
+    /// <remarks>
+    /// The filtering is the point, not the lookup, for the reason
+    /// <see cref="FindAskTargetsAsync"/> gives: the page offered these names, and a form this
+    /// application rendered is still something the sender can edit before posting it back. An id
+    /// belonging to another exchange, to the sharer themselves, or to the sharer's own pick is
+    /// dropped silently — there is nothing to report to somebody who has edited a form by hand.
+    ///
+    /// The giver is found with the same ordering <see cref="FindGiftIdeaRouteAsync"/> uses, and for
+    /// a reason that matters more here than there. An organizer editing picks can leave two
+    /// participants holding one name; which of them receives a forward is arbitrary either way, but
+    /// the two paths must at least be arbitrary in the same direction, or the person this says the
+    /// ideas are for and the person the other path says drew the subject can be different people.
+    ///
+    /// Finding no giver is not a failure. It is what a subject nobody has drawn looks like, and the
+    /// caller is expected to store the offer, send nothing, and say exactly what it would have said
+    /// either way.
+    /// </remarks>
+    internal async Task<(bool found, OfferTarget target)> FindOfferTargetAsync(FindOfferTargetRequest request)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var sharer = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.ParticipantId == request.SharerParticipantId)
+            .Select(participant => new { participant.PickedRecipientParticipantId })
+            .SingleOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        if (sharer is null)
+            return (false, OfferTargets.Empty);
+
+        var subject = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.ParticipantId == request.SubjectParticipantId
+                                  && participant.HatId == request.HatId
+                                  && participant.ParticipantId != request.SharerParticipantId
+                                  && participant.ParticipantId != sharer.PickedRecipientParticipantId)
+            .Select(participant => new { participant.ParticipantId, participant.Person.Name })
+            .SingleOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        if (subject is null)
+            return (false, OfferTargets.Empty);
+
+        // Who drew the subject, which is the inverse of a pick and so cannot be reached by
+        // following one. Read separately rather than joined above: this is the part that may
+        // legitimately find nothing, and an inner join would have discarded the subject with it.
+        var giver = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.PickedRecipientParticipantId == subject.ParticipantId)
+            .OrderBy(participant => participant.ParticipantId)
+            .Select(participant => new
+            {
+                participant.ParticipantId,
+                participant.Person.Name,
+                participant.Person.Email
+            })
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        return (true, new OfferTarget
+        {
+            SubjectParticipantId = subject.ParticipantId,
+            SubjectName = subject.Name,
+            GiverParticipantId = giver?.ParticipantId ?? Guid.Empty,
+            Giver = giver is null
+                ? Persons.Empty
+                : new Person { Name = giver.Name, Email = giver.Email }
+        });
+    }
+
+    /// <summary>
+    /// Appends an offer somebody made about another participant unprompted. Nothing is overwritten,
+    /// for the reasons offered_gift_idea--0001.sql gives.
+    /// </summary>
+    /// <remarks>
+    /// No recipient is recorded. There is none to record: an offer is routed to whoever holds the
+    /// subject's name at the moment it is sent, and that is resolved by
+    /// <see cref="FindOfferTargetAsync"/> rather than being a fact about this row.
+    /// </remarks>
+    internal async Task<Guid> AddOfferedGiftIdeaAsync(AddOfferedGiftIdeaRequest request)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var offer = new OfferedGiftIdeaEntity
+        {
+            OfferedGiftIdeaId = Guid.CreateVersion7(),
+            AuthorParticipantId = request.AuthorParticipantId,
+            SubjectParticipantId = request.SubjectParticipantId,
+            Ideas = request.Ideas,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        context.OfferedGiftIdeas.Add(offer);
+
+        await context.SaveChangesAsync().ConfigureAwait(false);
+
+        return offer.OfferedGiftIdeaId;
+    }
+
+    /// <summary>
     /// Resolves the ids an asker chose to the people behind them, keeping only the ones they were
     /// entitled to choose.
     /// </summary>
@@ -2729,6 +2897,15 @@ public class GiftExchangeProvider
             await context.GiftIdeaEnquiries
                 .Where(enquiry => enquiry.AskerParticipantId == participantId
                                   || enquiry.SubjectParticipantId == participantId)
+                .ExecuteDeleteAsync()
+                .ConfigureAwait(false);
+
+            // Offers in both directions too, and for the matching pair of reasons. What they wrote
+            // about others is text belonging to somebody no longer in the exchange; what others
+            // wrote about them describes a participant who is gone.
+            await context.OfferedGiftIdeas
+                .Where(offer => offer.AuthorParticipantId == participantId
+                                || offer.SubjectParticipantId == participantId)
                 .ExecuteDeleteAsync()
                 .ConfigureAwait(false);
 

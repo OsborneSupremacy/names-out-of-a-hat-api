@@ -144,6 +144,50 @@ public class EmailCompositionServiceTests
     }
 
     [Fact]
+    public void ComposeEmail_CarriesAButtonForOfferingIdeasAboutSomebodyElse()
+    {
+        // act
+        var body = _sut.ComposeEmail(Invitation(giftIdeasToken: "abc123"));
+
+        // assert: the same token on a different page, because the subject is chosen there rather
+        // than settled by the link. Discovery is the whole feature -- nobody goes looking for a
+        // page that offers to help a stranger they cannot identify, so the invitation has to offer
+        // it.
+        body.Should().Contain("SHARE IDEAS ABOUT SOMEONE ELSE");
+        body.Should().Contain("href=\"https://api.namesoutofahat.com/offer/abc123\"");
+    }
+
+    [Fact]
+    public void ComposeEmail_GivesTheOfferButtonLessWeightThanTheTwoAboveIt()
+    {
+        // act
+        var body = _sut.ComposeEmail(Invitation(giftIdeasToken: "abc123"));
+
+        // assert: three filled buttons of equal weight is three decisions for a reader who came to
+        // make one, and the two green ones sat together and read as one action written twice. Still
+        // a button, though -- nobody goes looking for a page that helps a stranger they cannot
+        // name, so being noticed is most of what makes this work.
+        body.Should().Contain("border:1px solid #1f7a4d;");
+
+        var filled = body.Split("background-color:#1f7a4d;color:#ffffff;").Length - 1;
+        filled.Should().Be(1, "only SHARE GIFT IDEAS is a filled green button; the Ask is blue");
+    }
+
+    [Fact]
+    public void ComposeEmail_DoesNotPromiseThatAnOfferCanBeChangedLater()
+    {
+        // act
+        var body = _sut.ComposeEmail(Invitation(giftIdeasToken: "abc123"));
+
+        // assert: SHARE GIFT IDEAS leads to a standing record that replaces itself and says so.
+        // An offer is one email, so the same sentence on the offer button would be promising to
+        // recall something already sent. Once in this email, from the one block that earns it --
+        // the other block making the promise is in the Ask, not here.
+        var promises = body.Split("change them later if you think of something better").Length - 1;
+        promises.Should().Be(1);
+    }
+
+    [Fact]
     public void ComposeEmail_OffersNoWayToShareIdeasByReplying()
     {
         // act
@@ -167,7 +211,9 @@ public class EmailCompositionServiceTests
 
         // assert
         body.Should().NotContain("SHARE GIFT IDEAS");
+        body.Should().NotContain("SHARE IDEAS ABOUT SOMEONE ELSE");
         body.Should().NotContain("/ideas/");
+        body.Should().NotContain("/offer/");
     }
 
     [Theory]

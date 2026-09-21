@@ -528,6 +528,214 @@ public class GiftIdeaProviderTests
             HoldUntilAsked = true
         });
 
+    [Fact]
+    public async Task ListOfferCandidatesAsync_LeavesOutTheSharerAndTheirOwnPick()
+    {
+        // arrange: Alpha drew Beta.
+        var exchange = await SeedExchangeAsync();
+
+        // act
+        var candidates = await _sut.ListOfferCandidatesAsync(exchange.HatId, exchange.Alpha.ParticipantId);
+
+        // assert: ideas about your own pick would be routed straight back to you, so Beta is not a
+        // choice to offer and explain. Nothing is given away -- Alpha knows both missing names.
+        candidates.Select(candidate => candidate.ParticipantId)
+            .Should().BeEquivalentTo([exchange.Gamma.ParticipantId]);
+    }
+
+    [Fact]
+    public async Task ListOfferCandidatesAsync_GivenTheyHaveDrawnNobody_OffersEverybodyElse()
+    {
+        // arrange
+        var hat = await CreateHatAsync();
+        var alpha = await AddParticipantAsync(hat, "Alpha");
+        var beta = await AddParticipantAsync(hat, "Beta");
+        var gamma = await AddParticipantAsync(hat, "Gamma");
+
+        // act: no picks made, so Alpha holds the all-zero id.
+        var candidates = await _sut.ListOfferCandidatesAsync(hat.HatId, alpha.ParticipantId);
+
+        // assert: right, because nobody can be routed back to them.
+        candidates.Select(candidate => candidate.ParticipantId)
+            .Should().BeEquivalentTo([beta.ParticipantId, gamma.ParticipantId]);
+    }
+
+    [Fact]
+    public async Task FindOfferTargetAsync_ResolvesWhoeverDrewTheSubject()
+    {
+        // arrange: Beta drew Gamma, so ideas about Gamma are for Beta.
+        var exchange = await SeedExchangeAsync();
+
+        // act
+        var (found, target) = await _sut.FindOfferTargetAsync(new FindOfferTargetRequest
+        {
+            HatId = exchange.HatId,
+            SharerParticipantId = exchange.Alpha.ParticipantId,
+            SubjectParticipantId = exchange.Gamma.ParticipantId
+        });
+
+        // assert
+        found.Should().BeTrue();
+        target.SubjectName.Should().Be("Gamma");
+        target.GiverParticipantId.Should().Be(exchange.Beta.ParticipantId);
+        target.Giver.Email.Should().Be(exchange.Beta.Email);
+    }
+
+    [Fact]
+    public async Task FindOfferTargetAsync_GivenNobodyHoldsTheSubjectsName_FindsTheSubjectAndNoGiver()
+    {
+        // arrange: nothing has been drawn.
+        var hat = await CreateHatAsync();
+        var alpha = await AddParticipantAsync(hat, "Alpha");
+        var gamma = await AddParticipantAsync(hat, "Gamma");
+
+        // act
+        var (found, target) = await _sut.FindOfferTargetAsync(new FindOfferTargetRequest
+        {
+            HatId = hat.HatId,
+            SharerParticipantId = alpha.ParticipantId,
+            SubjectParticipantId = gamma.ParticipantId
+        });
+
+        // assert: not a failure. The caller stores the offer, sends nothing, and says exactly what
+        // it would have said either way.
+        found.Should().BeTrue();
+        target.GiverParticipantId.Should().Be(Guid.Empty);
+        target.Giver.Email.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task FindOfferTargetAsync_GivenTheirOwnPick_FindsNothing()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+
+        // act: only reachable by editing the form, since the page never offered Beta.
+        var (found, _) = await _sut.FindOfferTargetAsync(new FindOfferTargetRequest
+        {
+            HatId = exchange.HatId,
+            SharerParticipantId = exchange.Alpha.ParticipantId,
+            SubjectParticipantId = exchange.Beta.ParticipantId
+        });
+
+        // assert
+        found.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task FindOfferTargetAsync_GivenThemselves_FindsNothing()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+
+        // act
+        var (found, _) = await _sut.FindOfferTargetAsync(new FindOfferTargetRequest
+        {
+            HatId = exchange.HatId,
+            SharerParticipantId = exchange.Alpha.ParticipantId,
+            SubjectParticipantId = exchange.Alpha.ParticipantId
+        });
+
+        // assert: the share page already covers writing about yourself.
+        found.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task FindOfferTargetAsync_GivenASubjectInAnotherExchange_FindsNothing()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+        var other = await SeedExchangeAsync();
+
+        // act
+        var (found, _) = await _sut.FindOfferTargetAsync(new FindOfferTargetRequest
+        {
+            HatId = exchange.HatId,
+            SharerParticipantId = exchange.Alpha.ParticipantId,
+            SubjectParticipantId = other.Gamma.ParticipantId
+        });
+
+        // assert: membership is checked here rather than assumed from the page having offered it.
+        found.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AddOfferedGiftIdeaAsync_AppendsRatherThanOverwriting()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+
+        // act
+        await OfferedAboutAsync(exchange.Alpha.ParticipantId, exchange.Gamma.ParticipantId, "A cast iron pan.");
+        await OfferedAboutAsync(exchange.Alpha.ParticipantId, exchange.Gamma.ParticipantId, "Or a good knife.");
+
+        // assert: append-only, as the other two gift idea tables are. Each row is one message that
+        // was sent, and an abuse report is answerable only against what was actually sent.
+        await using var context = _contextFactory.CreateDbContext();
+
+        var stored = await context.OfferedGiftIdeas
+            .Where(offer => offer.AuthorParticipantId == exchange.Alpha.ParticipantId)
+            .OrderBy(offer => offer.CreatedAt)
+            .Select(offer => offer.Ideas)
+            .ToListAsync();
+
+        stored.Should().Equal("A cast iron pan.", "Or a good knife.");
+    }
+
+    [Fact]
+    public async Task DeleteParticipantAsync_TakesTheOffersNamingThemInEitherRole()
+    {
+        // arrange: one Alpha wrote, and one somebody else wrote about Alpha.
+        var exchange = await SeedExchangeAsync();
+        await OfferedAboutAsync(exchange.Alpha.ParticipantId, exchange.Gamma.ParticipantId, "A cast iron pan.");
+        await OfferedAboutAsync(exchange.Gamma.ParticipantId, exchange.Alpha.ParticipantId, "A good knife.");
+
+        // act
+        await _sut.DeleteParticipantAsync(exchange.OrganizerEmail, exchange.HatId, exchange.Alpha.Email);
+
+        // assert: an offer has no ask to be found through, so nothing else would have reached these.
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.OfferedGiftIdeas.AnyAsync(row =>
+                row.AuthorParticipantId == exchange.Alpha.ParticipantId
+                || row.SubjectParticipantId == exchange.Alpha.ParticipantId))
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DeleteHatAsync_TakesEveryOfferInItWithIt()
+    {
+        // arrange
+        var exchange = await SeedExchangeAsync();
+        await OfferedAboutAsync(exchange.Alpha.ParticipantId, exchange.Gamma.ParticipantId, "A cast iron pan.");
+        await OfferedAboutAsync(exchange.Beta.ParticipantId, exchange.Alpha.ParticipantId, "A good knife.");
+
+        // act
+        await _sut.DeleteHatAsync(new DeleteHatRequest
+        {
+            HatId = exchange.HatId,
+            OrganizerEmail = exchange.OrganizerEmail
+        });
+
+        // assert: the author alone reaches all of them, because both participants an offer names
+        // belong to the exchange that is going.
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.OfferedGiftIdeas.AnyAsync(row =>
+                exchange.ParticipantIds.Contains(row.AuthorParticipantId)
+                || exchange.ParticipantIds.Contains(row.SubjectParticipantId)))
+            .Should().BeFalse();
+    }
+
+    /// <summary>One participant having offered ideas about another without being asked.</summary>
+    private Task<Guid> OfferedAboutAsync(Guid authorParticipantId, Guid subjectParticipantId, string ideas) =>
+        _sut.AddOfferedGiftIdeaAsync(new AddOfferedGiftIdeaRequest
+        {
+            AuthorParticipantId = authorParticipantId,
+            SubjectParticipantId = subjectParticipantId,
+            Ideas = ideas
+        });
+
     private sealed record SeededParticipant(Guid ParticipantId, string Name, string Email);
 
     private sealed record SeededExchange(

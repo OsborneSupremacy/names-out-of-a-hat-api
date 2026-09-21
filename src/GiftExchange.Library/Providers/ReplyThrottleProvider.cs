@@ -6,8 +6,9 @@ namespace GiftExchange.Library.Providers;
 /// Limits on how often a repeated request can make this application send mail.
 /// </summary>
 /// <remarks>
-/// Two limits, both held per participant: how often one participant can Ask another for gift ideas,
-/// and how often an organizer can correct one participant's address and resend.
+/// Three limits, all held per participant: how often one participant can Ask another for gift ideas,
+/// how often one can offer ideas about another unprompted, and how often an organizer can correct
+/// one participant's address and resend.
 ///
 /// The same conditional-put-with-TTL arrangement <c>LoginTokenProvider</c> uses to throttle magic
 /// link requests, against the same table.
@@ -37,6 +38,18 @@ internal class ReplyThrottleProvider : IReplyThrottleProvider
             "ASKTHROTTLE",
             request.Window,
             "an Ask");
+
+    /// <inheritdoc />
+    public Task<ReserveSlotResponse> TryReserveOfferSlotAsync(
+        ReserveOfferSlotRequest request
+    ) =>
+        ReserveAsync(
+            // A prefix of its own, so that being asked about somebody and volunteering about them
+            // cannot suppress one another.
+            $"OFFERTHROTTLE#{request.SharerParticipantId}#{request.SubjectParticipantId}",
+            "OFFERTHROTTLE",
+            request.Window,
+            "an offer of gift ideas");
 
     /// <inheritdoc />
     public Task<ReserveSlotResponse> TryReserveAddressChangeSlotAsync(

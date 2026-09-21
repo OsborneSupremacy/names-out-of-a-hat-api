@@ -1266,3 +1266,66 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: REVOKE SELECT, INSERT, UPDATE, DELETE ON gift_idea_enquiry FROM giftexchange_user
+
+  - changeSet:
+      id: offered_gift_idea--0001
+      author: ben
+      comment: >
+        Ideas offered about another participant without being asked. A table of its own rather than
+        rows in contributed_gift_idea, because the recipient of a contribution is frozen on its ask
+        and the recipient of an offer is resolved when it is sent -- so an offer has nothing to point
+        at, and contributed_gift_idea--0001 says in as many words that who a suggestion was sent to
+        lives on the ask and is not repeated.
+      changes:
+        - sqlFile:
+            path: tables/offered_gift_idea--0001.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: DROP TABLE offered_gift_idea
+
+  - changeSet:
+      id: idx_offered_gift_idea_author--0001
+      author: ben
+      comment: >
+        Removing a participant has to reach what they wrote. Deleting a whole hat needs only this
+        one, for the reason the asks and enquiries give: both participants an offer names belong to
+        the same exchange, so the author side reaches every row of it.
+      changes:
+        - sql:
+            sql: CREATE INDEX ASYNC idx_offered_gift_idea_author ON offered_gift_idea (author_participant_id, created_at)
+      rollback:
+        - sql:
+            sql: DROP INDEX idx_offered_gift_idea_author
+
+  - changeSet:
+      id: idx_offered_gift_idea_subject--0001
+      author: ben
+      comment: >
+        The other half of removing one participant: what everybody else wrote about them, which the
+        author index does not reach. Unlike the hat sweep, a single participant leaving cannot rely
+        on the whole exchange going at once.
+      changes:
+        - sql:
+            sql: CREATE INDEX ASYNC idx_offered_gift_idea_subject ON offered_gift_idea (subject_participant_id)
+      rollback:
+        - sql:
+            sql: DROP INDEX idx_offered_gift_idea_subject
+
+  - changeSet:
+      id: giftexchange_user--0016
+      author: ben
+      comment: >
+        SELECT, INSERT and DELETE on offered_gift_idea. No UPDATE: the table is append-only and has
+        no counterpart to released_at or to the token hash a revocation overwrites. A separate
+        changeset rather than an addition to --0009 or --0015, whose checksums cover the tables they
+        named when they ran.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0016.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: REVOKE SELECT, INSERT, DELETE ON offered_gift_idea FROM giftexchange_user

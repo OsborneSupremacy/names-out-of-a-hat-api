@@ -17,6 +17,15 @@ internal interface IReplyThrottleProvider
     Task<ReserveSlotResponse> TryReserveAskSlotAsync(ReserveAskSlotRequest request);
 
     /// <summary>
+    /// Claims one participant's unprompted offer of ideas about another for the window.
+    /// </summary>
+    /// <remarks>
+    /// A slot of its own rather than the Ask's, for the reason
+    /// <see cref="ReserveOfferSlotRequest"/> gives.
+    /// </remarks>
+    Task<ReserveSlotResponse> TryReserveOfferSlotAsync(ReserveOfferSlotRequest request);
+
+    /// <summary>
     /// Claims one participant's address correction for the window.
     /// </summary>
     /// <remarks>

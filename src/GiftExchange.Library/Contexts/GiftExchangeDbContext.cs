@@ -44,6 +44,8 @@ public sealed class GiftExchangeDbContext : DbContext
 
     public DbSet<ContributedGiftIdeaEntity> ContributedGiftIdeas => Set<ContributedGiftIdeaEntity>();
 
+    public DbSet<OfferedGiftIdeaEntity> OfferedGiftIdeas => Set<OfferedGiftIdeaEntity>();
+
     public DbSet<ParticipantEmailDeliveryEntity> ParticipantEmailDeliveries =>
         Set<ParticipantEmailDeliveryEntity>();
 
