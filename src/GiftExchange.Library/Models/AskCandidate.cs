@@ -7,6 +7,10 @@ namespace GiftExchange.Library.Models;
 /// Carries a name and an id and no address, because a page rendered from these is shown to another
 /// participant. The organizer collected those addresses to send invitations with, and listing them
 /// back to everybody in the exchange would be a use they were never given for.
+///
+/// With one exception, which <c>ParticipantNaming</c> makes: when somebody shares their name with
+/// another participant, <see cref="Name"/> carries their address in brackets, because a list with
+/// two identical names on it gives nobody a way to choose between them.
 /// </remarks>
 public record AskCandidate
 {

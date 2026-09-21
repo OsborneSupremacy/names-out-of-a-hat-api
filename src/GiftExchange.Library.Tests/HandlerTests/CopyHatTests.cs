@@ -75,7 +75,7 @@ public class CopyHatTests
         var (_, copy) = await CopyAsync(source, excludePreviousRecipients: false);
 
         // assert
-        copy.Participants.Should().OnlyContain(participant => participant.PickedRecipient == string.Empty);
+        copy.Participants.Should().OnlyContain(participant => participant.PickedRecipient.Email == string.Empty);
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public class CopyHatTests
 
             copied.EligibleRecipients.Should().NotContain(participant.PickedRecipient);
             copied.EligibleRecipients.Should().BeEquivalentTo(
-                participant.EligibleRecipients.Where(name => name != participant.PickedRecipient));
+                participant.EligibleRecipients.Where(recipient => recipient != participant.PickedRecipient));
         }
     }
 
@@ -125,7 +125,7 @@ public class CopyHatTests
 
         reread.Status.Should().Be(HatStatus.Closed);
         EligibilityIn(reread).Should().BeEquivalentTo(EligibilityIn(source.Participants));
-        reread.Participants.Should().OnlyContain(participant => participant.PickedRecipient != string.Empty);
+        reread.Participants.Should().OnlyContain(participant => participant.PickedRecipient.Email != string.Empty);
     }
 
     [Fact]
@@ -365,7 +365,7 @@ public class CopyHatTests
 
         // Beta is not allowed to draw Charlie — the kind of standing rule a copy exists to keep.
         await _giftExchangeProvider.UpdateEligibleRecipientsAsync(
-            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Name]);
+            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Email]);
 
         await PickAsync(hat, alpha, beta);
         await PickAsync(hat, beta, alpha);
@@ -388,7 +388,7 @@ public class CopyHatTests
 
     private Task PickAsync(HatDataModel hat, Participant giver, Participant recipient) =>
         _giftExchangeProvider.UpdateParticipantPickedRecipientAsync(
-            hat.OrganizerEmail, hat.HatId, giver.Person.Email, recipient.Person.Name);
+            hat.OrganizerEmail, hat.HatId, giver.Person.Email, recipient.Person.Email);
 
     private async Task<(HttpStatusCode statusCode, Hat copy)> CopyAsync(
         SourceHat source,
@@ -438,7 +438,7 @@ public class CopyHatTests
     private static Dictionary<string, List<string>> EligibilityIn(IEnumerable<Participant> participants) =>
         participants.ToDictionary(
             participant => participant.Person.Email,
-            participant => participant.EligibleRecipients.OrderBy(name => name).ToList());
+            participant => participant.EligibleRecipients.Select(recipient => recipient.Email).OrderBy(email => email).ToList());
 
     private sealed record SourceHat(HatDataModel Hat, ImmutableList<Participant> Participants);
 }

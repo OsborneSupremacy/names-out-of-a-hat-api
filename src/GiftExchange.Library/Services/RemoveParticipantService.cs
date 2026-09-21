@@ -63,7 +63,7 @@ internal class RemoveParticipantService : IApiGatewayHandler
             .RemoveParticipantFromEligibleRecipientsAsync(
                 request.OrganizerEmail,
                 request.HatId,
-                participant.Person.Name
+                participant.Person.Email
             )
             .ConfigureAwait(false);
 

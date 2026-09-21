@@ -79,7 +79,7 @@ public class EditParticipantNameTests
         var receiver = await AddParticipantAsync(hat, "Receiver");
 
         await _provider.UpdateParticipantPickedRecipientAsync(
-            hat.Organizer.Email, hat.Id, giver.Email, "Receiver");
+            hat.Organizer.Email, hat.Id, giver.Email, receiver.Email);
 
         await _provider.UpdateHatStatusAsync(hat.Organizer.Email, hat.Id, HatStatus.NamesAssigned);
 
@@ -97,7 +97,7 @@ public class EditParticipantNameTests
         // rename rather than pointing at a name nobody answers to any more.
         stored.Participants
             .Single(candidate => candidate.Person.Email == giver.Email)
-            .PickedRecipient.Should().Be("Receiver Renamed");
+            .PickedRecipient.Name.Should().Be("Receiver Renamed");
     }
 
     /// <summary>
@@ -126,32 +126,35 @@ public class EditParticipantNameTests
         inCarols.Person.Name.Should().Be("Bob Renamed");
     }
 
+    /// <summary>
+    /// Two people in one exchange may share a name. What an exchange cannot hold is the same person
+    /// twice, and the address is what says who a person is.
+    /// </summary>
     [Fact]
-    public async Task EditName_GivenANameAnotherParticipantHere_ReturnsConflictAndNamesTheExchange()
+    public async Task EditName_GivenANameAnotherParticipantHereUses_IsAccepted()
     {
         // arrange
         var hat = await CreateHatWithOrganizerAsync("The Colliding Exchange");
         var participant = await AddParticipantAsync(hat, "Original Name");
         await AddParticipantAsync(hat, "Taken Name");
 
-        // act: compared case-insensitively, the same way AddParticipantService compares names.
-        var response = await RenameAsync(hat.Organizer.Email, hat.Id, participant.Email, "taken name");
+        // act
+        var response = await RenameAsync(hat.Organizer.Email, hat.Id, participant.Email, "Taken Name");
 
         // assert
-        response.StatusCode.Should().Be((int)HttpStatusCode.Conflict);
-        response.Body.Should().Contain(hat.Name);
+        response.StatusCode.Should().Be((int)HttpStatusCode.OK);
 
         var stored = await _testDataService.GetParticipantAsync(hat.Organizer.Email, hat.Id, participant.Email);
-        stored.Person.Name.Should().Be("Original Name");
+        stored.Person.Name.Should().Be("Taken Name");
     }
 
     /// <summary>
-    /// The collision is in an exchange the caller does not run, and the rename would have reached
-    /// it. Refused, and explained — but the other organizer's exchange is not named, because whose
-    /// guest list it collided with is not this organizer's to learn.
+    /// A rename reaches every exchange the person is in, and used to be refused over a name taken
+    /// in an exchange the caller does not even run. Names are not unique within an exchange any
+    /// more, so there is nothing there to refuse.
     /// </summary>
     [Fact]
-    public async Task EditName_GivenANameTakenInSomebodyElsesExchange_ReturnsConflictWithoutNamingIt()
+    public async Task EditName_GivenANameTakenInSomebodyElsesExchange_IsAccepted()
     {
         // arrange: Bob is in Alice's exchange and in Carol's, and Carol's already has a Dave.
         var alicesHat = await CreateHatWithOrganizerAsync("Alices Exchange");
@@ -165,19 +168,16 @@ public class EditParticipantNameTests
         var response = await RenameAsync(alicesHat.Organizer.Email, alicesHat.Id, bob.Email, "Dave");
 
         // assert
-        response.StatusCode.Should().Be((int)HttpStatusCode.Conflict);
-        response.Body.Should().NotContain(carolsHat.Name);
+        response.StatusCode.Should().Be((int)HttpStatusCode.OK);
 
-        var stored = await _testDataService
-            .GetParticipantAsync(alicesHat.Organizer.Email, alicesHat.Id, bob.Email);
+        var inCarols = await _testDataService
+            .GetParticipantAsync(carolsHat.Organizer.Email, carolsHat.Id, bob.Email);
 
-        stored.Person.Name.Should().Be("Bob Original");
+        inCarols.Person.Name.Should().Be("Dave");
     }
 
     /// <summary>
-    /// Nobody collides with themselves. The person being renamed is excluded from the check by
-    /// person id, which is what makes fixing the case of a name an accepted edit rather than a
-    /// conflict with the row about to be overwritten.
+    /// Fixing the capitalisation of a name is an ordinary rename.
     /// </summary>
     [Fact]
     public async Task EditName_ChangingOnlyTheCapitalisation_IsAccepted()

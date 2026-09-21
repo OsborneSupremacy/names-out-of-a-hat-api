@@ -51,7 +51,7 @@ public class UpdateProfileTests
     }
 
     [Fact]
-    public async Task UpdateProfile_GivenANameAnotherParticipantAlreadyUses_ReturnsConflict()
+    public async Task UpdateProfile_GivenANameAnotherParticipantAlreadyUses_IsAccepted()
     {
         // arrange
         var hat = await CreateHatWithOrganizerAsync();
@@ -64,14 +64,14 @@ public class UpdateProfileTests
             Email = "someone.else@example.com"
         }, []);
 
-        // act: compared case-insensitively, the same way AddParticipantService compares names.
-        var response = await UpdateNameAsync(hat.OrganizerEmail, "taken name");
+        // act: two people in one exchange may share a name; the address tells them apart.
+        var response = await UpdateNameAsync(hat.OrganizerEmail, "Taken Name");
 
         // assert
-        response.StatusCode.Should().Be((int)HttpStatusCode.Conflict);
+        response.StatusCode.Should().Be((int)HttpStatusCode.OK);
 
         var (_, stored) = await _provider.GetHatAsync(hat.OrganizerEmail, hat.HatId);
-        stored.Organizer.Name.Should().Be(hat.OrganizerName);
+        stored.Organizer.Name.Should().Be("Taken Name");
     }
 
     /// <summary>
@@ -120,15 +120,12 @@ public class UpdateProfileTests
     }
 
     /// <summary>
-    /// The gap that converging on <c>RenamePersonAsync</c> closed. This check used to look only at
-    /// exchanges the renamer organizes, and a rename reaches every exchange they are in — so
-    /// somebody could rename themselves into a collision in an exchange run by anybody else.
-    ///
-    /// The refusal does not name that exchange. Whose it is, and who else is in it, is not the
-    /// renamer's to learn from a message about their own profile.
+    /// A rename reaches every exchange the person is in, including ones run by somebody else, and
+    /// used to be refused over a name taken there. Names are not unique within an exchange any
+    /// more, so it goes through.
     /// </summary>
     [Fact]
-    public async Task UpdateProfile_GivenANameTakenInSomebodyElsesExchange_ReturnsConflict()
+    public async Task UpdateProfile_GivenANameTakenInSomebodyElsesExchange_IsAccepted()
     {
         // arrange: Bob takes part in Alice's exchange, which already has a Dave in it.
         var bobEmail = FakeValues.Email(new Bogus.Faker());
@@ -155,8 +152,12 @@ public class UpdateProfileTests
         var response = await UpdateNameAsync(bobEmail, "Dave");
 
         // assert
-        response.StatusCode.Should().Be((int)HttpStatusCode.Conflict);
-        response.Body.Should().NotContain(alicesHat.HatName);
+        response.StatusCode.Should().Be((int)HttpStatusCode.OK);
+
+        var (_, alices) = await _provider.GetHatAsync(alicesHat.OrganizerEmail, alicesHat.HatId);
+        alices.Participants
+            .Where(participant => participant.Person.Name == "Dave")
+            .Should().HaveCount(2, "Bob and the Dave already there are two people who share a name");
     }
 
     /// <summary>

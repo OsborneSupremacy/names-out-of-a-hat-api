@@ -9,9 +9,13 @@ namespace GiftExchange.Library.Tests.FakeTests;
 ///
 /// The collision is the one worth a test rather than a comment. Names were drawn straight from
 /// Bogus, whose first-name pool is small enough that a hat seeded with a handful of participants
-/// regularly got two of the same — and participants within a gift exchange must have distinct
-/// names, so the duplicate never failed where it was made. It surfaced somewhere else entirely, as
-/// whatever that test happened to be asserting, in about one full run in five.
+/// regularly got two of the same. Participants within a gift exchange used to need distinct names,
+/// so the duplicate never failed where it was made; it surfaced somewhere else entirely, as whatever
+/// that test happened to be asserting, in about one full run in five.
+///
+/// Duplicates are allowed now, and the guarantee is still worth keeping. Two participants sharing a
+/// name are named with their address in brackets, so a test looking for a bare name in an email
+/// would fail on the one run in five where the faker happened to repeat itself.
 /// </summary>
 public class FakeValuesTests
 {
@@ -22,9 +26,9 @@ public class FakeValuesTests
     private const int AHatsWorth = 50;
 
     /// <summary>
-    /// Lower-cased before comparing, because that is how <c>AddParticipantService</c> compares
-    /// them: two names this test called distinct and that one calls equal would leave the flake
-    /// exactly where it was.
+    /// Lower-cased before comparing, because that is how <c>ParticipantNaming</c> compares them: two
+    /// names this test called distinct and that one calls equal would leave the flake exactly where
+    /// it was.
     /// </summary>
     [Fact]
     public void FakedParticipants_InOneHatsWorth_AllHaveDistinctNames()

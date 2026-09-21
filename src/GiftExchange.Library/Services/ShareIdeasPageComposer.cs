@@ -46,7 +46,7 @@ public class ShareIdeasPageComposer
     internal string ComposeForm(ComposeShareIdeasFormRequest request)
     {
         var route = request.Route;
-        var encodedSubject = HttpUtility.HtmlEncode(route.Subject.Name);
+        var encodedSubject = HttpUtility.HtmlEncode(route.DisplayNameOf(route.Subject));
         var action = $"{ShareIdeasUrl}/{HttpUtility.UrlEncode(request.Token)}";
 
         var body = new StringBuilder();
@@ -110,7 +110,7 @@ public class ShareIdeasPageComposer
              """);
 
         return Page(
-            route.IsContribution ? $"Gift ideas for {route.Subject.Name}" : "Share your gift ideas",
+            route.IsContribution ? $"Gift ideas for {route.DisplayNameOf(route.Subject)}" : "Share your gift ideas",
             body.ToString());
     }
 
@@ -167,7 +167,7 @@ public class ShareIdeasPageComposer
     internal string ComposeShared(ComposeSharedIdeasRequest request)
     {
         var route = request.Route;
-        var encodedSubject = HttpUtility.HtmlEncode(route.Subject.Name);
+        var encodedSubject = HttpUtility.HtmlEncode(route.DisplayNameOf(route.Subject));
 
         // A contribution is never held, because the checkbox is not offered on that path. Stated
         // here as well so that a stray field on a contribution cannot make this page describe an

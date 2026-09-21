@@ -9,16 +9,20 @@ namespace GiftExchange.Library.Models;
 /// for one reason: an Ask is addressed to the person it names, so its target carries their address.
 /// This is not. What is written about the subject goes to whoever drew them, and the subject is
 /// never written to at all — so the only address here is the giver's, and the subject appears by
-/// name alone.
+/// name.
 ///
 /// Both halves in one record rather than two lookups, because a caller holding one without the
 /// other can neither send nor refuse without guessing.
 /// </remarks>
 public record OfferTarget
 {
-    /// <summary>Who the ideas are about. Their name reaches the reader; their address never does.</summary>
+    /// <summary>Who the ideas are about.</summary>
     public required Guid SubjectParticipantId { get; init; }
 
+    /// <summary>
+    /// The subject's name as the giver should read it. Their address reaches the reader only when
+    /// somebody else in the exchange shares that name — see <c>ParticipantNaming</c>.
+    /// </summary>
     public required string SubjectName { get; init; }
 
     /// <summary>

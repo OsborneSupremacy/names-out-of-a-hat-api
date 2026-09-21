@@ -7,7 +7,7 @@ public sealed class ParticipantFaker : Faker<Participant>
     public ParticipantFaker()
     {
         RuleFor(p => p.Person, _ => new PersonFaker().Generate());
-        RuleFor(f => f.PickedRecipient, string.Empty);
+        RuleFor(f => f.PickedRecipient, _ => Persons.Empty);
         RuleFor(f => f.EligibleRecipients, []);
         // A real face rather than a random string: everything downstream of a participant renders
         // this, and a faked one standing for something the application would never store would make

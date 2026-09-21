@@ -245,8 +245,8 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
 
         return _sender.SendAsync(
             target.Giver.Email,
-            GiftIdeaEmailCompositionService.ContributionForwardSubject(route.Sender.Name, target.SubjectName),
-            _composer.ComposeOfferedIdeasForward(route.Sender.Name, target.SubjectName, route.HatName, ideas));
+            GiftIdeaEmailCompositionService.ContributionForwardSubject(route.DisplayNameOf(route.Sender), target.SubjectName),
+            _composer.ComposeOfferedIdeasForward(route.DisplayNameOf(route.Sender), target.SubjectName, route.HatName, ideas));
     }
 
     /// <summary>

@@ -34,7 +34,7 @@ public class HatShakerServiceTests
             response.Participants.Should().HaveCount(6);
 
             var givers = response.Participants.Select(participant => participant.Person.Name);
-            var recipients = response.Participants.Select(participant => participant.PickedRecipient);
+            var recipients = response.Participants.Select(participant => participant.PickedRecipient.Name);
 
             givers.Should().OnlyHaveUniqueItems();
             recipients.Should().OnlyHaveUniqueItems();
@@ -42,7 +42,7 @@ public class HatShakerServiceTests
 
             response.Participants
                 .Should()
-                .NotContain(participant => participant.PickedRecipient == participant.Person.Name);
+                .NotContain(participant => participant.PickedRecipient.Email == participant.Person.Email);
         }
     }
 
@@ -207,7 +207,7 @@ public class HatShakerServiceTests
         response.Success.Should().BeTrue();
         response.Participants
             .OrderBy(participant => participant.Person.Name)
-            .Select(participant => participant.PickedRecipient)
+            .Select(participant => participant.PickedRecipient.Name)
             .Should()
             .Equal("Ben", "Chi", "Dev", "Ana");
     }
@@ -219,7 +219,7 @@ public class HatShakerServiceTests
     public void Shake_GivenParticipantsWhoAlreadyDrew_IgnoresWhatTheyDrewBefore()
     {
         var participants = EverybodyEligible(5)
-            .Select(participant => participant with { PickedRecipient = "Stale" })
+            .Select(participant => participant with { PickedRecipient = PersonNamed("Stale") })
             .ToImmutableList();
 
         // act
@@ -227,7 +227,44 @@ public class HatShakerServiceTests
 
         // assert
         response.Success.Should().BeTrue();
-        response.Participants.Should().NotContain(participant => participant.PickedRecipient == "Stale");
+        response.Participants.Should().NotContain(participant => participant.PickedRecipient.Name == "Stale");
+    }
+
+    /// <summary>
+    /// Two people in one exchange may share a name. The draw is made by address, so two Sams are
+    /// two people with their own eligibility, and the one who may only draw Ana draws Ana.
+    /// </summary>
+    [Theory]
+    [InlineData("ANYTHING_GOES")]
+    [InlineData("NO_MUTUAL_PAIRS")]
+    [InlineData("SINGLE_CYCLE")]
+    public void Shake_GivenTwoParticipantsSharingAName_TellsThemApart(string drawType)
+    {
+        // arrange: a single chain is the only draw these exclusions allow — Ana, first Sam, second
+        // Sam, and back to Ana.
+        var ana = PersonNamed("Ana");
+        var firstSam = new Person { Name = "Sam", Email = "sam.one@example.com" };
+        var secondSam = new Person { Name = "Sam", Email = "sam.two@example.com" };
+
+        var participants = ImmutableList.Create(
+            Participants.Empty with { Person = ana, EligibleRecipients = [firstSam] },
+            Participants.Empty with { Person = firstSam, EligibleRecipients = [secondSam] },
+            Participants.Empty with { Person = secondSam, EligibleRecipients = [ana] }
+        );
+
+        // act
+        var response = Shake(participants, drawType);
+
+        // assert
+        response.Success.Should().BeTrue();
+
+        var pickedByEmail = response.Participants.ToDictionary(
+            participant => participant.Person.Email,
+            participant => participant.PickedRecipient.Email);
+
+        pickedByEmail[ana.Email].Should().Be(firstSam.Email);
+        pickedByEmail[firstSam.Email].Should().Be(secondSam.Email);
+        pickedByEmail[secondSam.Email].Should().Be(ana.Email);
     }
 
     private static ShakeHatResponse Shake(ImmutableList<Participant> participants, string drawType) =>
@@ -244,9 +281,12 @@ public class HatShakerServiceTests
     private static Participant Participant(string name, params string[] eligibleRecipients) =>
         Participants.Empty with
         {
-            Person = new Person { Name = name, Email = $"{name.ToLowerInvariant()}@example.com" },
-            EligibleRecipients = [.. eligibleRecipients]
+            Person = PersonNamed(name),
+            EligibleRecipients = [.. eligibleRecipients.Select(PersonNamed)]
         };
+
+    private static Person PersonNamed(string name) =>
+        new() { Name = name, Email = $"{name.ToLowerInvariant()}@example.com" };
 
     /// <summary>A hat in which anybody may draw anybody but themselves.</summary>
     private static ImmutableList<Participant> EverybodyEligible(int count)
@@ -263,14 +303,14 @@ public class HatShakerServiceTests
     {
         var pickedByGiver = participants.ToDictionary(
             participant => participant.Person.Name,
-            participant => participant.PickedRecipient
+            participant => participant.PickedRecipient.Name
         );
 
         return participants
             .Where(participant =>
-                pickedByGiver.TryGetValue(participant.PickedRecipient, out var theirPick)
+                pickedByGiver.TryGetValue(participant.PickedRecipient.Name, out var theirPick)
                 && theirPick == participant.Person.Name)
-            .Select(participant => $"{participant.Person.Name} and {participant.PickedRecipient}")
+            .Select(participant => $"{participant.Person.Name} and {participant.PickedRecipient.Name}")
             .ToImmutableList();
     }
 
@@ -282,7 +322,7 @@ public class HatShakerServiceTests
     {
         var pickedByGiver = participants.ToDictionary(
             participant => participant.Person.Name,
-            participant => participant.PickedRecipient
+            participant => participant.PickedRecipient.Name
         );
 
         var visited = new HashSet<string>();

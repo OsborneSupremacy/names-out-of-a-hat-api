@@ -49,7 +49,7 @@ internal class GetHatService : IApiGatewayHandler
             Participants = hat.Participants
                 .Select(p => p with
                 {
-                    PickedRecipient = string.IsNullOrWhiteSpace(p.PickedRecipient) ? string.Empty : Persons.Redacted.Name
+                    PickedRecipient = string.IsNullOrWhiteSpace(p.PickedRecipient.Email) ? Persons.Empty : Persons.Redacted
                 })
                 .ToImmutableList()
         };

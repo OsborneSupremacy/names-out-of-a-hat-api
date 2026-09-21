@@ -323,8 +323,8 @@ public class UndeliverableInvitationsServiceTests
         await _provider.UpdateParticipantPickedRecipientAsync(
             exchange.OrganizerEmail,
             exchange.HatId,
-            exchange.BadName,
-            exchange.QuietName);
+            exchange.BadEmail,
+            exchange.QuietEmail);
 
         await BounceAsync(exchange.BadId, "smtp; 550 5.1.1 user unknown");
 

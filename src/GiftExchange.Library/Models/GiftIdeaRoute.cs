@@ -87,6 +87,16 @@ public record GiftIdeaRoute
     public required Guid AskId { get; init; }
 
     /// <summary>
+    /// Everybody in the exchange, the sender included.
+    /// </summary>
+    /// <remarks>
+    /// Two participants may share a name, and anything this route leads to that names somebody to
+    /// somebody else has to be able to say which of them it means. That is all this is for — see
+    /// <c>ParticipantNaming</c>, and <c>ParticipantNaming.DisplayNameOf</c> for the way it is read.
+    /// </remarks>
+    public required ImmutableList<Person> Hatmates { get; init; }
+
+    /// <summary>
     /// Whether this is somebody's suggestion about another participant rather than their own words
     /// about themselves. The two are stored in different tables and described differently in every
     /// message, so nothing downstream should infer it by comparing people.
@@ -108,6 +118,7 @@ internal static class GiftIdeaRoutes
         Subject = Persons.Empty,
         Giver = Persons.Empty,
         GiverParticipantId = Guid.Empty,
-        AskId = Guid.Empty
+        AskId = Guid.Empty,
+        Hatmates = []
     };
 }

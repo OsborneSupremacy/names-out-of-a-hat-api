@@ -73,8 +73,8 @@ public class ResetHatTests
             participant.EligibleRecipients
                 .Should()
                 .BeEquivalentTo(reread.Participants
-                    .Select(other => other.Person.Name)
-                    .Where(name => name != participant.Person.Name));
+                    .Select(other => other.Person)
+                    .Where(other => other.Email != participant.Person.Email));
     }
 
     /// <summary>
@@ -93,7 +93,7 @@ public class ResetHatTests
         var reread = await GetAsync(source);
 
         reread.Participants.Should().OnlyContain(participant =>
-            !participant.EligibleRecipients.Contains(participant.Person.Name));
+            !participant.EligibleRecipients.Any(recipient => recipient.Email == participant.Person.Email));
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class ResetHatTests
         // surviving pick and make this pass whether or not the draw was actually cleared.
         var reread = await GetAsync(source);
 
-        reread.Participants.Should().OnlyContain(participant => participant.PickedRecipient == string.Empty);
+        reread.Participants.Should().OnlyContain(participant => participant.PickedRecipient.Email == string.Empty);
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public class ResetHatTests
         var after = await GetAsync(source);
 
         after.Status.Should().Be(status);
-        after.Participants.Should().OnlyContain(participant => participant.PickedRecipient != string.Empty);
+        after.Participants.Should().OnlyContain(participant => participant.PickedRecipient.Email != string.Empty);
         EligibilityIn(after).Should().BeEquivalentTo(EligibilityIn(before));
     }
 
@@ -230,10 +230,10 @@ public class ResetHatTests
         var charlie = await AddParticipantAsync(hat, [alpha, beta]);
 
         await _giftExchangeProvider.UpdateEligibleRecipientsAsync(
-            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Name]);
+            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Email]);
 
         await _giftExchangeProvider.UpdateEligibleRecipientsAsync(
-            hat.OrganizerEmail, hat.HatId, charlie.Person.Email, [beta.Person.Name]);
+            hat.OrganizerEmail, hat.HatId, charlie.Person.Email, [beta.Person.Email]);
 
         var participants = await _giftExchangeProvider.GetParticipantsAsync(hat.OrganizerEmail, hat.HatId);
 
@@ -250,7 +250,7 @@ public class ResetHatTests
                 source.Hat.OrganizerEmail,
                 source.Hat.HatId,
                 participants[index].Person.Email,
-                participants[(index + 1) % participants.Count].Person.Name);
+                participants[(index + 1) % participants.Count].Person.Email);
 
         await _giftExchangeProvider.UpdateHatStatusAsync(
             source.Hat.OrganizerEmail, source.Hat.HatId, HatStatus.NamesAssigned);
@@ -292,7 +292,7 @@ public class ResetHatTests
     private static Dictionary<string, List<string>> EligibilityIn(IEnumerable<Participant> participants) =>
         participants.ToDictionary(
             participant => participant.Person.Email,
-            participant => participant.EligibleRecipients.OrderBy(name => name).ToList());
+            participant => participant.EligibleRecipients.Select(recipient => recipient.Email).OrderBy(email => email).ToList());
 
     private sealed record SourceHat(HatDataModel Hat, ImmutableList<Participant> Participants);
 }

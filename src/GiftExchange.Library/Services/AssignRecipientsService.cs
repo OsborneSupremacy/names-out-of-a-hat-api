@@ -107,7 +107,7 @@ internal class AssignRecipientsService : IApiGatewayHandler
                     request.OrganizerEmail,
                     request.HatId,
                     participant.Person.Email,
-                    participant.PickedRecipient
+                    participant.PickedRecipient.Email
                 ));
 
         await Task.WhenAll(updateParticipantsTasks)

@@ -51,7 +51,7 @@ internal static class HatShakerService
         // records, and nothing below reads PickedRecipient, but leaving it set would mean the
         // failure paths return participants carrying a stale draw.
         var cleared = participants
-            .Select(participant => participant with { PickedRecipient = Persons.Empty.Name })
+            .Select(participant => participant with { PickedRecipient = Persons.Empty })
             .ToImmutableList();
 
         return drawType switch
@@ -79,13 +79,13 @@ internal static class HatShakerService
         bool forbidMutualPairs
     )
     {
-        var assignedGivers = new HashSet<string>();
-        var assignedRecipients = new HashSet<string>();
+        // Keyed by address, which is what identifies somebody within a hat. Names are not: two
+        // people in one exchange may answer to the same one.
+        var assignedGivers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var assignedRecipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Giver name to the name they drew, for the mutual-pair check. Keyed by name because
-        // eligibility is expressed in names; participants are keyed by email everywhere else,
-        // and names are unique within a hat, which is what makes both keys workable.
-        var pickedByGiverName = new Dictionary<string, string>();
+        // Giver address to the address they drew, for the mutual-pair check.
+        var pickedByGiverEmail = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var assigned = new List<Participant>();
 
@@ -96,8 +96,8 @@ internal static class HatShakerService
             );
 
             var eligibleRecipients = giver.EligibleRecipients
-                .Where(name => !assignedRecipients.Contains(name))
-                .Where(name => !forbidMutualPairs || !HasDrawn(pickedByGiverName, name, giver.Person.Name))
+                .Where(recipient => !assignedRecipients.Contains(recipient.Email))
+                .Where(recipient => !forbidMutualPairs || !HasDrawn(pickedByGiverEmail, recipient.Email, giver.Person.Email))
                 .ToList();
 
             if (eligibleRecipients.Count == 0)
@@ -108,8 +108,8 @@ internal static class HatShakerService
             assigned.Add(giver with { PickedRecipient = pick });
 
             assignedGivers.Add(giver.Person.Email);
-            assignedRecipients.Add(pick);
-            pickedByGiverName[giver.Person.Name] = pick;
+            assignedRecipients.Add(pick.Email);
+            pickedByGiverEmail[giver.Person.Email] = pick.Email;
         }
 
         return new ShakeHatResponse { Success = true, Participants = assigned.ToImmutableList() };
@@ -133,7 +133,9 @@ internal static class HatShakerService
     /// </remarks>
     private static ShakeHatResponse ShakeSingleCycle(ImmutableList<Participant> participants, Faker faker)
     {
-        var byName = participants.ToDictionary(participant => participant.Person.Name);
+        var byEmail = participants.ToDictionary(
+            participant => participant.Person.Email,
+            StringComparer.OrdinalIgnoreCase);
 
         // The type argument is stated because Bogus also has a params overload, which an
         // ImmutableList<T> otherwise binds to as a single item.
@@ -141,37 +143,37 @@ internal static class HatShakerService
         var current = start;
 
         var chain = new List<Participant> { start };
-        var visited = new HashSet<string> { start.Person.Name };
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { start.Person.Email };
 
         while (chain.Count < participants.Count)
         {
             var candidates = current.EligibleRecipients
-                .Where(name => !visited.Contains(name))
+                .Where(recipient => !visited.Contains(recipient.Email))
                 .ToList();
 
             if (candidates.Count == 0)
                 return ShakeHatResponse.Failed;
 
-            var nextName = faker.PickRandom(candidates);
+            var nextEmail = faker.PickRandom(candidates).Email;
 
             // An eligible recipient naming somebody who is not in the hat would be a data fault
             // rather than a tight draw. Failing the attempt reports it the same way as any other
             // dead end instead of throwing out of the shaker.
-            if (!byName.TryGetValue(nextName, out var next))
+            if (!byEmail.TryGetValue(nextEmail, out var next))
                 return ShakeHatResponse.Failed;
 
             chain.Add(next);
-            visited.Add(nextName);
+            visited.Add(nextEmail);
             current = next;
         }
 
-        if (!current.EligibleRecipients.Contains(start.Person.Name))
+        if (!current.EligibleRecipients.Any(recipient => recipient.Email.ContentEquals(start.Person.Email)))
             return ShakeHatResponse.Failed;
 
         var assigned = chain
             .Select((participant, position) => participant with
             {
-                PickedRecipient = chain[(position + 1) % chain.Count].Person.Name
+                PickedRecipient = chain[(position + 1) % chain.Count].Person
             })
             .ToImmutableList();
 
@@ -179,9 +181,9 @@ internal static class HatShakerService
     }
 
     private static bool HasDrawn(
-        Dictionary<string, string> pickedByGiverName,
-        string giverName,
-        string recipientName
+        Dictionary<string, string> pickedByGiverEmail,
+        string giverEmail,
+        string recipientEmail
     ) =>
-        pickedByGiverName.TryGetValue(giverName, out var theirPick) && theirPick == recipientName;
+        pickedByGiverEmail.TryGetValue(giverEmail, out var theirPick) && theirPick.ContentEquals(recipientEmail);
 }

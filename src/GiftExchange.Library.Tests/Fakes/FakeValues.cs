@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Bogus;
 
 namespace GiftExchange.Library.Tests.Fakes;
@@ -13,8 +14,23 @@ internal static class FakeValues
     /// The suffix keeps hat names unique per organizer, which the unique index now requires and
     /// which matters more since every test class shares one database.
     /// </summary>
+    /// <remarks>
+    /// Scrubbed down to what CreateHatRequestValidator allows. Bogus draws these words from a pool
+    /// that includes things like "24/365", and a slash is outside the validator's set -- so roughly
+    /// one hat in a few hundred was a name the application would have refused, and a test seeding
+    /// one directly through the provider would never have noticed. Replaced with a space rather
+    /// than dropped, so "24/365" reads as two words instead of one number nobody wrote.
+    /// </remarks>
     public static string HatName(Faker faker) =>
-        Truncate($"{faker.Random.Words(2)} {faker.Random.AlphaNumeric(6)}", 50);
+        Truncate(
+            DisallowedInHatName.Replace($"{faker.Random.Words(2)} {faker.Random.AlphaNumeric(6)}", " "),
+            50);
+
+    /// <summary>
+    /// Everything outside the set CreateHatRequestValidator.HatName matches, which is the same set
+    /// every other hat-name validator uses.
+    /// </summary>
+    private static readonly Regex DisallowedInHatName = new(@"[^\p{L}\p{N}\s\-'.,&()]");
 
     /// <summary>
     /// Bogus derives an address from the name it generated, so two faked people who land on the

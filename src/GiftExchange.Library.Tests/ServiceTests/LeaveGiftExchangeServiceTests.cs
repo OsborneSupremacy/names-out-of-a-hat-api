@@ -414,7 +414,7 @@ public class LeaveGiftExchangeServiceTests
                 hat.OrganizerEmail,
                 hat.HatId,
                 created[index].Person.Email,
-                created[(index + 1) % created.Count].Person.Name);
+                created[(index + 1) % created.Count].Person.Email);
 
         await _provider.UpdateHatStatusAsync(hat.OrganizerEmail, hat.HatId, status);
 

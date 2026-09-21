@@ -12,7 +12,7 @@ namespace GiftExchange.Library.Models;
 ///
 /// Carries a name and an id and no address, for the reason <see cref="AskCandidate"/> gives: a page
 /// rendered from these is shown to another participant, and the organizer collected those addresses
-/// to send invitations with.
+/// to send invitations with — and it makes the same exception, for somebody sharing their name.
 /// </remarks>
 public record OfferCandidate
 {

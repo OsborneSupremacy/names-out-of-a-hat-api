@@ -162,7 +162,7 @@ public class CloseHatTests
         {
             foreach (var participant in hat.Participants)
                 email.HtmlBody.Should().Contain(participant.Person.Name)
-                    .And.Contain(participant.PickedRecipient);
+                    .And.Contain(participant.PickedRecipient.Name);
         });
     }
 
@@ -193,10 +193,10 @@ public class CloseHatTests
         var bob = await AddParticipantAsync(hat, "Bob", "bob@example.com", [alice]);
 
         await _giftExchangeProvider
-            .UpdateParticipantPickedRecipientAsync(hat.Organizer.Email, hat.Id, alice.Person.Email, bob.Person.Name);
+            .UpdateParticipantPickedRecipientAsync(hat.Organizer.Email, hat.Id, alice.Person.Email, bob.Person.Email);
 
         await _giftExchangeProvider
-            .UpdateParticipantPickedRecipientAsync(hat.Organizer.Email, hat.Id, bob.Person.Email, alice.Person.Name);
+            .UpdateParticipantPickedRecipientAsync(hat.Organizer.Email, hat.Id, bob.Person.Email, alice.Person.Email);
 
         await _giftExchangeProvider
             .UpdateHatStatusAsync(hat.Organizer.Email, hat.Id, HatStatus.CooledOff);

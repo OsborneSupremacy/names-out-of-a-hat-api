@@ -542,10 +542,10 @@ public class OfferGiftIdeasServiceTests
         var gamma = await AddAsync(hat, "Gamma");
         var delta = await AddAsync(hat, "Delta");
 
-        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, alpha, "Beta");
-        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, beta, "Gamma");
-        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, gamma, "Delta");
-        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, delta, "Alpha");
+        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, alpha, beta);
+        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, beta, gamma);
+        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, gamma, delta);
+        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, delta, alpha);
         await _provider.UpdateHatStatusAsync(hat.OrganizerEmail, hat.HatId, HatStatus.InvitationsSent);
 
         var tokens = await _provider.IssueGiftIdeaTokensAsync(hat.HatId);

@@ -154,6 +154,34 @@ public class GiftIdeaProviderTests
         route.SenderPickedRecipient.Name.Should().BeEmpty("they have not drawn anybody either");
     }
 
+    /// <summary>
+    /// Two people in one exchange may share a name. The route carries everybody in the exchange so
+    /// that whatever it leads to can name the right one, and a list to choose from gives each Sam
+    /// their address.
+    /// </summary>
+    [Fact]
+    public async Task GiftIdeas_GivenTwoParticipantsSharingAName_TellsThemApart()
+    {
+        // arrange
+        var hat = await CreateHatAsync();
+        var alpha = await AddParticipantAsync(hat, "Alpha");
+        var firstSam = await AddParticipantAsync(hat, "Sam");
+        var secondSam = await AddParticipantAsync(hat, "Sam");
+
+        var tokens = await _sut.IssueGiftIdeaTokensAsync(hat.HatId);
+
+        // act
+        var (_, route) = await _sut.FindGiftIdeaRouteAsync(SecretToken.Hash(tokens[alpha.Email]));
+        var candidates = await _sut.ListAskCandidatesAsync(hat.HatId, route.ParticipantId);
+
+        // assert
+        route.Hatmates.Select(person => person.Email)
+            .Should().BeEquivalentTo([alpha.Email, firstSam.Email, secondSam.Email]);
+
+        candidates.Select(candidate => candidate.Name).Should().BeEquivalentTo(
+            [$"Sam ({firstSam.Email})", $"Sam ({secondSam.Email})"]);
+    }
+
     [Fact]
     public async Task FindGiftIdeaRouteAsync_GivenAnUnknownHash_FindsNothing()
     {
@@ -299,9 +327,9 @@ public class GiftIdeaProviderTests
         var beta = await AddParticipantAsync(hat, "Beta");
         var gamma = await AddParticipantAsync(hat, "Gamma");
 
-        await _sut.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, alpha.Email, beta.Name);
-        await _sut.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, beta.Email, gamma.Name);
-        await _sut.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, gamma.Email, alpha.Name);
+        await _sut.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, alpha.Email, beta.Email);
+        await _sut.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, beta.Email, gamma.Email);
+        await _sut.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, gamma.Email, alpha.Email);
 
         return new SeededExchange(hat.HatId, hat.OrganizerEmail, alpha, beta, gamma);
     }

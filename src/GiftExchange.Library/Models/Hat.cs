@@ -34,24 +34,23 @@ internal static class Hats
     };
 
     /// <summary>
-    /// The face worn in this hat by the participant of that name, or the empty string when nobody
-    /// in it is called that.
+    /// The face worn in this hat by the given person, or the empty string when they are not in it.
     /// </summary>
     /// <remarks>
-    /// Looked up by name because that is what a pick is by the time it reaches a domain record —
-    /// <c>Participant.PickedRecipient</c> is a name, not an id — and names are unique within a hat,
-    /// which <c>AddParticipantService</c> is what enforces.
+    /// Looked up by address, because that is what identifies somebody within a hat. Names are not
+    /// unique — two people in one exchange may answer to the same one — and a lookup by name would
+    /// hand one of them the other's face.
     ///
     /// Empty rather than a stand-in face for the misses, and the misses are real: an unshaken
     /// participant has drawn nobody, and the detail view is served a draw redacted to "Hidden"
     /// until the exchange is closed. Somewhere that has no face to show should show none.
     /// </remarks>
-    public static string EmojiFor(this Hat hat, string participantName)
+    public static string EmojiFor(this Hat hat, Person person)
     {
-        if (string.IsNullOrWhiteSpace(participantName)) return string.Empty;
+        if (string.IsNullOrWhiteSpace(person.Email)) return string.Empty;
 
         return hat.Participants
-            .Where(participant => participant.Person.Name.ContentEquals(participantName))
+            .Where(participant => participant.Person.Email.ContentEquals(person.Email))
             .Select(participant => participant.Emoji)
             .FirstOrDefault(string.Empty);
     }

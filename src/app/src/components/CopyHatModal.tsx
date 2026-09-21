@@ -1,5 +1,6 @@
 import { useMemo, useState, FormEvent } from 'react'
 import { Participant } from '../api'
+import { displayName } from '../participantNaming'
 // Shares the modal chrome with the other dialogs; see the note in EditNameModal.
 import './CreateHatModal.css'
 import './CopyHatModal.css'
@@ -56,13 +57,17 @@ export function CopyHatModal({
       return []
     }
 
+    // By address, because two participants may share a name.
+    const people = participants.map((participant) => participant.person)
+
     return participants
       .filter(
         (participant) =>
-          participant.eligibleRecipients.filter((name) => name !== participant.pickedRecipient)
-            .length === 0
+          participant.eligibleRecipients.filter(
+            (recipient) => recipient.email !== participant.pickedRecipient.email
+          ).length === 0
       )
-      .map((participant) => participant.person.name)
+      .map((participant) => displayName(participant.person, people))
   }, [participants, excludePreviousRecipients])
 
   const handleSubmit = async (e: FormEvent) => {

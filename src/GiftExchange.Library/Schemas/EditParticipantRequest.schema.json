@@ -17,10 +17,11 @@
         "eligibleRecipients": {
             "type": "array",
             "items": {
-                "type": "string"
+                "type": "string",
+                "format": "email"
             },
             "minItems": 1,
-            "description": "The list of eligible recipient names"
+            "description": "The email addresses of the participants this participant may draw. Addresses rather than names, because two participants may share a name."
         },
         "email": {
             "type": "string",
