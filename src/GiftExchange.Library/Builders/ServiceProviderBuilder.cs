@@ -239,6 +239,7 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<CompletionEmailCompositionService>()
                 .AddSingleton<GiftIdeaEmailCompositionService>()
                 .AddSingleton<GiftIdeaContentPolicy>()
+                .AddSingleton<AskQuestionPolicy>()
                 .AddSingleton<IReplyThrottleProvider, ReplyThrottleProvider>()
                 .AddSingleton<AutomaticEmailSender>()
                 .AddSingleton<IEmailQueue, EmailQueue>()

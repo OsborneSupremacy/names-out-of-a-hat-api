@@ -26,6 +26,9 @@ public class AskPageComposer
     /// </summary>
     public const string ChoiceField = "who";
 
+    /// <summary>The field the optional question is posted under.</summary>
+    public const string QuestionField = "question";
+
     /// <summary>
     /// Below this many participants, asking a third party stops being anonymous in practice.
     /// </summary>
@@ -55,33 +58,27 @@ public class AskPageComposer
     /// ordinary case, and everything below it is the escape hatch for when asking them directly
     /// would give the game away.
     /// </remarks>
-    /// <param name="askToken"></param>
-    /// <param name="notice">
-    /// Shown above the form when a submission came back here. Empty on the way in, and this
-    /// application's own words rather than anybody else's — it is placed as markup, so nothing a
-    /// participant typed may be passed here.
-    /// </param>
-    /// <param name="subjectName"></param>
-    /// <param name="candidates"></param>
-    public string ComposeChoose(
-        string subjectName,
-        ImmutableList<AskCandidate> candidates,
-        string askToken,
-        string notice
-    )
+    internal string ComposeChoose(ComposeChooseRequest request)
     {
-        var encodedName = HttpUtility.HtmlEncode(subjectName);
-        var action = $"{AskUrl}/{HttpUtility.UrlEncode(askToken)}";
+        var candidates = request.Candidates;
+        var encodedName = HttpUtility.HtmlEncode(request.SubjectName);
+        var action = $"{AskUrl}/{HttpUtility.UrlEncode(request.AskToken)}";
 
         var pick = candidates.Where(candidate => candidate.IsTheirPick).ToImmutableList();
         var others = candidates.Where(candidate => !candidate.IsTheirPick).ToImmutableList();
 
+        // A form handed back keeps what was ticked; a fresh one ticks the pick and nobody else.
+        bool IsTicked(AskCandidate candidate) =>
+            request.Chosen.IsEmpty
+                ? candidate.IsTheirPick
+                : request.Chosen.Contains(candidate.ParticipantId);
+
         var body = new StringBuilder();
 
-        if (!string.IsNullOrWhiteSpace(notice))
+        if (!string.IsNullOrWhiteSpace(request.Notice))
             body.Append(
                 $"""
-                 <p style="margin:0 0 20px;padding:12px 16px;background-color:#fdf3d8;border-radius:4px;">{notice}</p>
+                 <p style="margin:0 0 20px;padding:12px 16px;background-color:#fdf3d8;border-radius:4px;">{request.Notice}</p>
                  """);
 
         body.Append(
@@ -95,7 +92,7 @@ public class AskPageComposer
             body.Append(
                 $"""
                  <p style="margin:24px 0 8px;font-weight:bold;">Ask {encodedName} directly</p>
-                 {Choices(pick, "we'll ask what they'd like, without saying who wanted to know", true)}
+                 {Choices(pick, "we'll ask what they'd like, without saying who wanted to know", IsTicked)}
                  """);
 
         if (!others.IsEmpty)
@@ -118,8 +115,10 @@ public class AskPageComposer
                      this small they may well work out that it was you.</p>
                      """);
 
-            body.Append(Choices(others, $"we'll ask for ideas about {encodedName}", false));
+            body.Append(Choices(others, $"we'll ask for ideas about {encodedName}", IsTicked));
         }
+
+        body.Append(Question(request.Question));
 
         body.Append(
             """
@@ -134,7 +133,7 @@ public class AskPageComposer
             suggestion is whose.</p>
             """);
 
-        return Page($"Gift ideas for {subjectName}", body.ToString());
+        return Page($"Gift ideas for {request.SubjectName}", body.ToString());
     }
 
     /// <summary>
@@ -218,7 +217,11 @@ public class AskPageComposer
     /// token in the address is what authorises the request, and the handler checks every id it is
     /// given against the asker's own exchange rather than trusting the form it rendered.
     /// </remarks>
-    private static string Choices(ImmutableList<AskCandidate> candidates, string note, bool ticked)
+    private static string Choices(
+        ImmutableList<AskCandidate> candidates,
+        string note,
+        Func<AskCandidate, bool> isTicked
+    )
     {
         var rows = new StringBuilder();
 
@@ -229,7 +232,7 @@ public class AskPageComposer
             rows.Append(
                 $"""
                  <label for="{HttpUtility.HtmlAttributeEncode(id)}" style="display:block;padding:10px 12px;margin-bottom:6px;background-color:#faf8f5;border-radius:4px;cursor:pointer;">
-                   <input type="checkbox" id="{HttpUtility.HtmlAttributeEncode(id)}" name="{ChoiceField}" value="{HttpUtility.HtmlAttributeEncode(candidate.ParticipantId.ToString())}"{(ticked ? " checked" : string.Empty)} style="margin-right:10px;" />
+                   <input type="checkbox" id="{HttpUtility.HtmlAttributeEncode(id)}" name="{ChoiceField}" value="{HttpUtility.HtmlAttributeEncode(candidate.ParticipantId.ToString())}"{(isTicked(candidate) ? " checked" : string.Empty)} style="margin-right:10px;" />
                    <b>{HttpUtility.HtmlEncode(candidate.Name)}</b>
                    <span style="color:#666666;font-size:14px;"> &mdash; {note}</span>
                  </label>
@@ -239,6 +242,58 @@ public class AskPageComposer
         return rows.ToString();
     }
 
+    /// <summary>
+    /// The optional question box, and the warning that belongs next to it.
+    /// </summary>
+    /// <remarks>
+    /// After the names rather than before them, because who to ask is the decision and the question
+    /// is an extra. The warning sits under the box rather than at the top of the page: it is about
+    /// what goes in this box, and somebody typing is looking here.
+    ///
+    /// The example is written about "they" because one question goes to everybody ticked, the pick
+    /// included, and a question phrased for the pick reads oddly to anybody else.
+    /// </remarks>
+    private static string Question(string question) =>
+        $"""
+         <p style="margin:24px 0 8px;"><label for="{QuestionField}" style="font-weight:bold;">Anything particular you'd like to know?</label>
+         <span style="color:#666666;font-size:14px;"> &mdash; optional</span></p>
+         <textarea id="{QuestionField}" name="{QuestionField}" rows="3" maxlength="{AskQuestionPolicy.MaxLength}" placeholder="e.g. What shirt size do they wear?" style="box-sizing:border-box;width:100%;padding:12px;border:1px solid #cccccc;border-radius:4px;font:inherit;">{HttpUtility.HtmlEncode(question)}</textarea>
+         <p style="margin:8px 0 0;color:#666666;font-size:14px;"><b>Be careful not to reveal your
+         identity in your question</b> &mdash; don't sign it, and don't mention anything only you
+         would know. Everyone you've ticked gets the same question. Up to
+         {AskQuestionPolicy.MaxLength:N0} characters, and no links.</p>
+         """;
+
+    /// <summary>
+    /// What to tell somebody whose question was not sent.
+    /// </summary>
+    /// <remarks>
+    /// Placed as markup by <see cref="ComposeChoose"/>, so these are this application's own words and
+    /// nothing else. Every one says that nobody was asked, because the page they are looking at is
+    /// the same form they just submitted and it would otherwise be fair to wonder.
+    /// </remarks>
+    public static string ExplainRefusal(AskQuestionOutcome outcome) =>
+        outcome switch
+        {
+            AskQuestionOutcome.RejectedTooLong =>
+                $"Nobody's been asked yet &mdash; your question is too long. Please shorten it to {AskQuestionPolicy.MaxLength:N0} characters or fewer.",
+
+            AskQuestionOutcome.RejectedWouldRevealAsker =>
+                "Nobody's been asked yet &mdash; your question includes your own name. We can't pass that on, because it would tell them who's asking. Please take it out.",
+
+            AskQuestionOutcome.RejectedContainsLink =>
+                "Nobody's been asked yet &mdash; your question contains a link, and we don't send links with a question. Please take it out.",
+
+            AskQuestionOutcome.RejectedInappropriateContent =>
+                "Nobody's been asked yet &mdash; your question contains content we can't pass on. Please reword it.",
+
+            // Distinct from the line above on purpose: the question may be perfectly fine, and
+            // calling it inappropriate when the checker was simply unreachable is wrong and unhelpful.
+            AskQuestionOutcome.RejectedModerationUnavailable =>
+                "Nobody's been asked yet &mdash; we couldn't check your question just now. Please try again in a few minutes, or send without a question.",
+
+            _ => string.Empty
+        };
 
     private static string Page(string heading, string body) =>
         EmailLinkedPage.Compose(heading, body);

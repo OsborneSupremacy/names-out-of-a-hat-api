@@ -274,11 +274,12 @@ public class GiftIdeaEmailCompositionService
     /// It also gives nothing away by existing: everybody is drawn by exactly one person, so
     /// learning that somebody has your name tells you what you already knew.
     /// </remarks>
-    public string ComposeAsk(string hatName, string giftIdeasToken) =>
+    internal string ComposeAsk(ComposeAskRequest request) =>
         Wrap([
-            $"Someone in {HttpUtility.HtmlEncode(GiftExchangeNaming.DescribeMidSentence(hatName))} would like to know what you'd like.",
+            $"Someone in {HttpUtility.HtmlEncode(GiftExchangeNaming.DescribeMidSentence(request.HatName))} would like to know what you'd like.",
             "They picked your name, and they're hoping for a hint. You can share as much or as little as you like.",
-            BuildShareGiftIdeasBlock(giftIdeasToken),
+            BuildQuestion(request.Question),
+            BuildShareGiftIdeasBlock(request.GiftIdeasToken),
             "<i>We won't tell you who asked, and we won't tell them we passed the message on.</i>"
         ]);
 
@@ -294,14 +295,15 @@ public class GiftIdeaEmailCompositionService
     ///
     /// Says that anything shared will be attributed, before the button rather than after it.
     /// </remarks>
-    public string ComposeContributionAsk(string hatName, string subjectName, string askToken)
+    internal string ComposeContributionAsk(ComposeContributionAskRequest request)
     {
-        var encodedName = HttpUtility.HtmlEncode(subjectName);
+        var encodedName = HttpUtility.HtmlEncode(request.SubjectName);
 
         return Wrap([
-            $"Someone in {HttpUtility.HtmlEncode(GiftExchangeNaming.DescribeMidSentence(hatName))} drew {encodedName}'s name, and they're hoping you might know what {encodedName} would like.",
+            $"Someone in {HttpUtility.HtmlEncode(GiftExchangeNaming.DescribeMidSentence(request.HatName))} drew {encodedName}'s name, and they're hoping you might know what {encodedName} would like.",
             $"Anything helps &mdash; something {encodedName} has been after, a hobby, a size, a shop they like, or a link to something you've seen them admire. You can share as much or as little as you want, and you're welcome to ignore this.",
-            BuildShareIdeasAboutBlock(subjectName, askToken),
+            BuildQuestion(request.Question),
+            BuildShareIdeasAboutBlock(request.SubjectName, request.AskToken),
             $"<i>We won't tell you who asked. {encodedName} isn't being told about this either, and nothing you send goes to them &mdash; only to the person shopping for them.</i>"
         ]);
     }
@@ -399,6 +401,21 @@ public class GiftIdeaEmailCompositionService
             $"<i>You're the only person we've shown this to, and we didn't tell {HttpUtility.HtmlEncode(helperName)} who was asking. Please don't reply to this email &mdash; nobody reads this address.</i>",
             BuildLinkDisclaimer()
         ]);
+
+    /// <summary>
+    /// The asker's own question, quoted, or nothing at all when they did not write one.
+    /// </summary>
+    /// <remarks>
+    /// Empty rather than a placeholder when there is no question, so that <see cref="Wrap"/> drops
+    /// the line and an ask without one reads exactly as it always has.
+    ///
+    /// Before the button, because it is part of what is being asked. Unattributed like everything
+    /// else in these emails: "they" is the same anonymous somebody the opening line introduced.
+    /// </remarks>
+    private static string BuildQuestion(string question) =>
+        string.IsNullOrWhiteSpace(question)
+            ? string.Empty
+            : $"They also asked:{Quote(question)}";
 
     /// <summary>
     /// Says plainly that links are the sender's own and are not checked.

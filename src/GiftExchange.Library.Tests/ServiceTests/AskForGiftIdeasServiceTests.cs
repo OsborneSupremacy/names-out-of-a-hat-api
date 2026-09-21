@@ -1,3 +1,4 @@
+using System.Web;
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
 using GiftExchange.Library.Contexts;
@@ -28,6 +29,8 @@ public class AskForGiftIdeasServiceTests
 
     private readonly IReplyThrottleProvider _throttle = Substitute.For<IReplyThrottleProvider>();
 
+    private readonly IContentModerationService _moderation = Substitute.For<IContentModerationService>();
+
     private readonly List<byte[]> _sent = [];
 
     private readonly GiftExchangeProvider _provider;
@@ -55,6 +58,8 @@ public class AskForGiftIdeasServiceTests
         _throttle.TryReserveAskSlotAsync(Arg.Any<ReserveAskSlotRequest>())
             .Returns(ReserveSlotResponses.Reserved);
 
+        _moderation.ModerateAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(ModerationVerdict.Clean);
+
         _ses.When(ses => ses.SendRawEmailAsync(Arg.Any<SendRawEmailRequest>(), Arg.Any<CancellationToken>()))
             .Do(call =>
             {
@@ -71,6 +76,8 @@ public class AskForGiftIdeasServiceTests
             new GiftIdeaEmailCompositionService(),
             new AskPageComposer(),
             new AutomaticEmailSender(_ses, Substitute.For<ILogger<AutomaticEmailSender>>()),
+            new AskQuestionPolicy(),
+            _moderation,
             Substitute.For<ILogger<AskForGiftIdeasService>>());
     }
 
@@ -668,6 +675,149 @@ public class AskForGiftIdeasServiceTests
             .Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Get_ShowsTheQuestionBoxAndTheIdentityWarning()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        var response = await _sut.FunctionHandler(Request("GET", exchange.AlphaToken), new FakeLambdaContext());
+
+        // assert: the warning belongs beside the box, where somebody typing is looking.
+        response.Body.Should().Contain($"name=\"{AskPageComposer.QuestionField}\"");
+        response.Body.Should().Contain($"maxlength=\"{AskQuestionPolicy.MaxLength}\"");
+        response.Body.Should().Contain("Be careful not to reveal your");
+    }
+
+    [Fact]
+    public async Task Post_GivenAQuestion_QuotesItInEveryAsk()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act: one to their pick, one to somebody else about their pick.
+        await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, "What shirt size do they wear?", exchange.BetaId, exchange.GammaId),
+            new FakeLambdaContext());
+
+        // assert
+        var sent = SentMessages();
+        sent.Should().HaveCount(2);
+        sent.Should().OnlyContain(message => Mentions(message, "What shirt size do they wear?"));
+        sent.Should().OnlyContain(message => Mentions(message, "They also asked:"));
+        await _moderation.Received(1).ModerateAsync("What shirt size do they wear?", Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task Post_GivenNoQuestion_SendsTheAskWithoutOne()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, "   ", exchange.BetaId, exchange.GammaId), new FakeLambdaContext());
+
+        // assert: the box is optional, so leaving it blank is the ordinary case and costs nothing.
+        var sent = SentMessages();
+        sent.Should().HaveCount(2);
+        sent.Should().NotContain(message => Mentions(message, "They also asked:"));
+        await _moderation.DidNotReceive().ModerateAsync(Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task Post_GivenAQuestionModerationRefuses_AsksNobodyAndKeepsTheForm()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        await HoldAsync(exchange.BetaId, "A cast iron skillet");
+        _moderation.ModerateAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(ModerationVerdict.Toxic);
+
+        // act
+        var response = await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, "Something unkind", exchange.GammaId), new FakeLambdaContext());
+
+        // assert: nothing sent, no throttle slot spent, no held ideas released — and what they
+        // typed and ticked is still there to fix.
+        response.Body.Should().Contain(AskPageComposer.ExplainRefusal(AskQuestionOutcome.RejectedInappropriateContent));
+        response.Body.Should().Contain("Something unkind</textarea>");
+        response.Body.Should().Contain($"value=\"{exchange.GammaId}\" checked");
+        response.Body.Should().Contain($"value=\"{exchange.BetaId}\" style");
+        _sent.Should().BeEmpty();
+
+        await _throttle.DidNotReceive().TryReserveAskSlotAsync(Arg.Any<ReserveAskSlotRequest>());
+
+        await using var context = _contextFactory.CreateDbContext();
+
+        (await context.GiftIdeaEnquiries.AnyAsync(row => row.AskerParticipantId == exchange.AlphaId))
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Post_GivenModerationIsUnavailable_AsksThemToTryAgainRatherThanReword()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+        _moderation.ModerateAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(ModerationVerdict.Unavailable);
+
+        // act
+        var response = await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, "Do they like jazz?", exchange.BetaId), new FakeLambdaContext());
+
+        // assert
+        response.Body.Should().Contain(AskPageComposer.ExplainRefusal(AskQuestionOutcome.RejectedModerationUnavailable));
+        _sent.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Post_GivenTheirOwnNameInTheQuestion_AsksNobody()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act: signing off is a habit, and the one habit that gives the whole thing away.
+        var response = await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, "Do they need gloves? Thanks, Alpha", exchange.BetaId),
+            new FakeLambdaContext());
+
+        // assert: refused on the rule, so moderation was never consulted.
+        response.Body.Should().Contain(AskPageComposer.ExplainRefusal(AskQuestionOutcome.RejectedWouldRevealAsker));
+        _sent.Should().BeEmpty();
+        await _moderation.DidNotReceive().ModerateAsync(Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task Post_GivenNobodyChosen_KeepsTheQuestion()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        var response = await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, "Favourite colour?"), new FakeLambdaContext());
+
+        // assert
+        response.Body.Should().Contain("Choose at least one person to ask.");
+        response.Body.Should().Contain("Favourite colour?</textarea>");
+    }
+
+    [Fact]
+    public async Task Post_EncodesTheQuestionInTheEmail()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        await _sut.FunctionHandler(
+            Request("POST", exchange.AlphaToken, "<b>Size?</b>\nOr colour?", exchange.BetaId), new FakeLambdaContext());
+
+        // assert: their words, shown as words, with their line break kept.
+        var ask = SentMessages().Single();
+        Mentions(ask, "<b>Size?</b>").Should().BeFalse();
+        Mentions(ask, "&lt;b&gt;Size?&lt;/b&gt;<br />Or colour?").Should().BeTrue();
+    }
+
     /// <summary>
     /// Whether a message's body carries this text. <c>HtmlBody</c> is nullable and every message
     /// these tests look at has one, so the check belongs here rather than in each assertion.
@@ -698,12 +848,20 @@ public class AskForGiftIdeasServiceTests
     /// page posts them: one repeated field, url-encoded.
     /// </summary>
     private static APIGatewayProxyRequest Request(string method, string token, params Guid[] chosen) =>
+        Request(method, token, null, chosen);
+
+    /// <summary>The same, with the question box filled in.</summary>
+    private static APIGatewayProxyRequest Request(string method, string token, string? question, params Guid[] chosen) =>
         new()
         {
             HttpMethod = method,
             Resource = "/ask/{token}",
             PathParameters = new Dictionary<string, string> { ["token"] = token },
-            Body = string.Join("&", chosen.Select(id => $"who={id}"))
+            Body = string.Join("&", chosen
+                .Select(id => $"{AskPageComposer.ChoiceField}={id}")
+                .Concat(question is null
+                    ? []
+                    : [$"{AskPageComposer.QuestionField}={HttpUtility.UrlEncode(question)}"]))
         };
 
     private ImmutableList<MimeMessage> SentMessages() =>
