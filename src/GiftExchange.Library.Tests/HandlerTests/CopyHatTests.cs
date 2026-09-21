@@ -303,6 +303,31 @@ public class CopyHatTests
     }
 
     /// <summary>
+    /// A copy is another open exchange too. The source is closed, so it is only the others that
+    /// count against the open limit. They spend the daily allowance as well, and the 409 is what
+    /// shows the open limit being answered first, which is the one waiting would not fix.
+    /// </summary>
+    [Fact]
+    public async Task CopyHat_GivenTheOrganizerHasReachedTheOpenLimit_Conflict()
+    {
+        // arrange
+        var source = await CreateRevealedHatAsync();
+
+        for (var created = 0; created < HatCreationLimiter.OpenLimit; created++)
+            await _giftExchangeProvider.CreateHatAsync(_hatDataModelFaker.Generate() with
+            {
+                OrganizerName = source.Hat.OrganizerName,
+                OrganizerEmail = source.Hat.OrganizerEmail
+            });
+
+        // act
+        var (statusCode, _) = await CopyAsync(source, excludePreviousRecipients: false, expectSuccess: false);
+
+        // assert
+        statusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    /// <summary>
     /// An exchange created before the participant limit existed can be larger than a new one is
     /// allowed to be. Copying it is refused with something an organizer can act on, rather than
     /// left to arrive as a transaction too large to commit.

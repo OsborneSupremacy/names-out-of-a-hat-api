@@ -72,7 +72,7 @@ internal class CopyHatService : IApiGatewayHandler
                 new InvalidOperationException(NameTakenMessage),
                 HttpStatusCode.Conflict);
 
-        // A copy spends the same daily allowance as an exchange created from scratch, and is
+        // A copy spends the same allowances as an exchange created from scratch, and is
         // checked at the same point in the sequence: once everything that would have refused this
         // request on its own terms has passed.
         var limit = await _hatCreationLimiter
@@ -81,8 +81,8 @@ internal class CopyHatService : IApiGatewayHandler
 
         if (!limit.WithinLimit)
             return new Result<CopyHatResponse>(
-                new InvalidOperationException(HatCreationLimiter.RefusalMessage(limit.NextAllowedAt)),
-                HttpStatusCode.TooManyRequests);
+                new InvalidOperationException(limit.RefusalMessage),
+                limit.RefusalStatusCode);
 
         var sourceHat = hatPreconditionResult.Hat;
 

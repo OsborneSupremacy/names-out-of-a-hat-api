@@ -338,6 +338,33 @@ public class GiftExchangeProvider
         };
     }
 
+    /// <summary>
+    /// How many exchanges this organizer has that are not yet <c>CLOSED</c>, on behalf of
+    /// <c>HatCreationLimiter</c>.
+    /// </summary>
+    /// <remarks>
+    /// Counted from the rows they own, like <see cref="CountHatsCreatedSinceAsync"/>, so closing an
+    /// exchange or deleting one makes room the moment it happens.
+    /// </remarks>
+    internal async Task<int> CountOpenHatsAsync(string organizerEmail)
+    {
+        if (string.IsNullOrWhiteSpace(organizerEmail))
+            return 0;
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var organizerPersonId = await FindPersonIdByEmailAsync(context, organizerEmail)
+            .ConfigureAwait(false);
+
+        if (organizerPersonId == Guid.Empty)
+            return 0;
+
+        return await context.Hats
+            .AsNoTracking()
+            .CountAsync(hat => hat.OrganizerPersonId == organizerPersonId && hat.Status != HatStatus.Closed)
+            .ConfigureAwait(false);
+    }
+
     /// <summary>An organizer with nothing inside the window.</summary>
     private static CountHatsCreatedSinceResponse NoneCreated =>
         new() { Count = 0, EarliestCreatedAt = DateTimeOffset.MinValue };

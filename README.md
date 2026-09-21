@@ -217,13 +217,15 @@ Which is also why not everybody may. Having somebody in your exchange isn't stan
 
 The rule has to hold on the way in as well, or it's decoration. Adding somebody the application already knows used to write whatever name the organizer typed — so a rename you were refused could be had anyway by removing them and adding them back. It doesn't any more: an existing person keeps the name they have unless the organizer adding them is entitled to state it, which is the same thing that happens when a participant is moved onto an address that already belongs to somebody. Both endpoints and the add path go through one provider method, because the last time this logic existed twice the two copies checked different things.
 
-### Five new exchanges a day, per organizer
+### Five new exchanges a day, and five open at once
 
-An organizer can start at most five gift exchanges in any 24 hours. Copying a finished exchange counts the same as creating one from scratch, because a copy writes a hat and a full set of participants, and exempting it would leave the limit with a door right next to it.
+An organizer can start at most five gift exchanges in any 24 hours, and can have at most five that aren't `CLOSED` at any one time. Copying a finished exchange counts toward both, the same as creating one from scratch, because a copy writes a hat and a full set of participants, and exempting it would leave the limits with a door right next to them.
 
-This isn't what stops spam. Creating an exchange sends no mail and needs a signed-in organizer, so the mail-sending paths have their own throttles. The limit caps how much one account can pile into the database in a sitting, whether from a script or a client stuck retrying, and it's set at a number no real organizer should reach.
+These aren't what stops spam. Creating an exchange sends no mail and needs a signed-in organizer, so the mail-sending paths have their own throttles. The limits cap how much one account can pile into the database, whether from a script or a client stuck retrying, and they're set at a number no real organizer should reach.
 
-The window rolls rather than resetting at midnight, which avoids deciding whose midnight it is, so the refusal gives a time in UTC instead of saying "tomorrow". The count comes from the exchanges the organizer currently owns, so deleting one gives the slot back. Someone who deletes a mistake and makes it again hasn't piled anything up. Two requests that arrive together can both get through at the edge, and that's left alone on purpose: the point is to stop hundreds, and serializing creation isn't worth it to tell five from six.
+Neither limit makes the other redundant. The cool-off before closing is minutes, so an open limit alone could be walked around by closing as you go. A daily limit alone would let an account keep adding five a day indefinitely. With both, how many exchanges an organizer has open is bounded, and so is how fast they can cycle through new ones.
+
+Hitting the open limit is a 409, and the message says to close or delete one. Hitting the daily limit is a 429. Its window rolls rather than resetting at midnight, which avoids deciding whose midnight it is, so the refusal gives a time in UTC instead of saying "tomorrow". When both apply, the open limit is the one reported, because waiting won't fix it. Both counts come from the exchanges the organizer currently owns, so deleting one gives the slot back. Someone who deletes a mistake and makes it again hasn't piled anything up. Two requests that arrive together can both get through at the edge, and that's left alone on purpose: the point is to stop hundreds, and serializing creation isn't worth it to tell five from six.
 
 ### User content is moderated, and fails closed
 

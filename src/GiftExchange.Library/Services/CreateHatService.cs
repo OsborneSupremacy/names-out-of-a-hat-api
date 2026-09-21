@@ -61,8 +61,8 @@ internal class CreateHatService : IApiGatewayHandler
 
         if (!limit.WithinLimit)
             return new Result<CreateHatResponse>(
-                new InvalidOperationException(HatCreationLimiter.RefusalMessage(limit.NextAllowedAt)),
-                HttpStatusCode.TooManyRequests);
+                new InvalidOperationException(limit.RefusalMessage),
+                limit.RefusalStatusCode);
 
         var newHat = new HatDataModel
         {
