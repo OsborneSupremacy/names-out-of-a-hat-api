@@ -269,7 +269,7 @@ internal class EditParticipantAddressService : IApiGatewayHandler
             {
                 Hat = hat,
                 ParticipantName = change.Name,
-                PickedName = participant.PickedRecipient,
+                PickedName = hat.DisplayNameIn(participant.PickedRecipient),
                 PickedEmoji = hat.EmojiFor(participant.PickedRecipient),
                 GiftIdeasToken = giftIdeasToken,
                 LeaveToken = leaveToken
@@ -317,11 +317,6 @@ internal class EditParticipantAddressService : IApiGatewayHandler
             AddressChangeOutcome.AddressAlreadyInExchange => new Result<EditParticipantAddressResponse>(
                 new InvalidOperationException(
                     $"Somebody else in this gift exchange is already using {newEmail}. Participants must have unique email addresses."),
-                HttpStatusCode.Conflict),
-
-            AddressChangeOutcome.NameAlreadyInExchange => new Result<EditParticipantAddressResponse>(
-                new InvalidOperationException(
-                    $"{newEmail} already belongs to somebody recorded under the name {change.Name}, and this gift exchange already has a participant with that name. Participants must have unique names."),
                 HttpStatusCode.Conflict),
 
             _ => new Result<EditParticipantAddressResponse>(

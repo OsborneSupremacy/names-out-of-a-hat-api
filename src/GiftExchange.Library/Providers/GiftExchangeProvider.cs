@@ -1430,7 +1430,8 @@ public class GiftExchangeProvider
     /// they may be in other exchanges, and their address may be how an organizer signs in — so
     /// renaming one to fit this hat would reach well beyond the exchange being edited. The cost is
     /// that moving somebody onto an address that already belongs to a person adopts that person's
-    /// name, which can collide with another participant here; that is refused rather than resolved.
+    /// name. That name may match another participant's here, which is allowed: the address is what
+    /// tells two people apart. What is refused is the address already being somebody in this hat.
     ///
     /// Moving the row does not revoke the links the old address was sent. The caller does that,
     /// through <see cref="RevokeGiftIdeaLinksAsync"/> and <see cref="IssueLeaveTokenAsync"/>, before
@@ -1464,26 +1465,20 @@ public class GiftExchangeProvider
             // point of an address correction: the person did not change, only where to reach them.
             var name = existingPerson?.Name ?? participant.Person.Name;
 
-            var others = await context.Participants
-                .AsNoTracking()
-                .Where(row => row.HatId == request.HatId && row.ParticipantId != participant.ParticipantId)
-                .Select(row => new { row.PersonId, row.Person.Name })
-                .ToListAsync()
-                .ConfigureAwait(false);
-
-            if (existingPerson is not null && others.Any(other => other.PersonId == existingPerson.PersonId))
+            if (existingPerson is not null)
             {
-                response = UpdateParticipantAddressResponses.For(AddressChangeOutcome.AddressAlreadyInExchange);
-                return;
-            }
+                var alreadyHere = await context.Participants
+                    .AsNoTracking()
+                    .AnyAsync(row => row.HatId == request.HatId
+                                     && row.ParticipantId != participant.ParticipantId
+                                     && row.PersonId == existingPerson.PersonId)
+                    .ConfigureAwait(false);
 
-            if (others.Any(other => other.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
-            {
-                // Named, because the message an organizer sees has to quote the name they collided
-                // with rather than say only that something did.
-                response = UpdateParticipantAddressResponses.For(AddressChangeOutcome.NameAlreadyInExchange)
-                    with { Name = name };
-                return;
+                if (alreadyHere)
+                {
+                    response = UpdateParticipantAddressResponses.For(AddressChangeOutcome.AddressAlreadyInExchange);
+                    return;
+                }
             }
 
             if (existingPerson is null)
@@ -1561,12 +1556,15 @@ public class GiftExchangeProvider
     /// after a hat is shaken leaves the hat shaken. That is the difference between this and
     /// removing and re-adding them, which is what an organizer had to do before.
     ///
-    /// The reach is what the two checks are for. A rename is felt in every exchange the person
+    /// The reach is what the standing check is for. A rename is felt in every exchange the person
     /// appears in, including ones the caller does not run, so it asks whether the caller is
-    /// entitled to make it at all, and then whether the new name is free everywhere it would land
-    /// rather than only in the exchange being edited. A name free here and taken there would leave
-    /// a stranger's exchange with two people answering to the same thing and an announcement that
-    /// cannot say which one you drew.
+    /// entitled to make it at all.
+    ///
+    /// It does not ask whether the new name is free. It once did, everywhere the rename would land,
+    /// and that was the problem: a person is one row shared by every exchange they are in, so a
+    /// rename could be refused over a stranger in somebody else's exchange. Two people in one
+    /// exchange answering to the same name is allowed; the address is what tells them apart, and
+    /// anything naming one of them to somebody else adds it — see <c>ParticipantNaming</c>.
     ///
     /// Somebody setting their own name before the application has a row for them is introducing
     /// themselves, and that is written rather than refused. It is the state a person is in between
@@ -1596,9 +1594,8 @@ public class GiftExchangeProvider
                     return RenamePersonResponses.For(NameChangeOutcome.PersonNotFound);
 
                 // Nobody the application has never heard of takes part in anything, so there is
-                // nothing for the name to collide with and no check worth running. Written through
-                // the same method every other introduction goes through, which is what handles two
-                // requests racing to write one address.
+                // no standing to check. Written through the same method every other introduction
+                // goes through, which is what handles two requests racing to write one address.
                 var introducedId = await ResolvePersonIdAsync(new ResolvePersonRequest
                 {
                     Email = request.Email,
@@ -1610,9 +1607,7 @@ public class GiftExchangeProvider
                 {
                     Outcome = NameChangeOutcome.Changed,
                     PersonId = introducedId,
-                    PreviousName = string.Empty,
-                    ConflictingHatNames = [],
-                    ConflictsElsewhere = false
+                    PreviousName = string.Empty
                 };
             }
         }
@@ -1642,58 +1637,6 @@ public class GiftExchangeProvider
                 return;
             }
 
-            // Every exchange this person is part of, which is the full extent of what renaming them
-            // touches. Organized as well as taken part in: an organizer is a participant of their
-            // own exchange today, and a rule that quietly depended on that would be one more thing
-            // to remember if it ever stopped being true.
-            var hatIds = await context.Participants
-                .AsNoTracking()
-                .Where(row => row.PersonId == person.PersonId)
-                .Select(row => row.HatId)
-                .Union(context.Hats
-                    .AsNoTracking()
-                    .Where(hat => hat.OrganizerPersonId == person.PersonId)
-                    .Select(hat => hat.HatId))
-                .ToListAsync()
-                .ConfigureAwait(false);
-
-            var normalized = Normalize(request.Name);
-
-            // Anybody in one of those exchanges who already answers to the new name. The person
-            // being renamed is excluded by person id rather than by participant id, so they are
-            // excluded in all of their exchanges at once — which is what makes a change of
-            // capitalisation, or a rename to the name they already have, an accepted no-op rather
-            // than a collision with themselves.
-            //
-            // ToLower, not ToLowerInvariant: only the former translates to SQL.
-            var conflicts = await context.Participants
-                .AsNoTracking()
-                .Where(row => hatIds.Contains(row.HatId)
-                              && row.PersonId != person.PersonId
-                              && row.Person.Name.ToLower() == normalized)
-                .Select(row => new { HatName = row.Hat.Name, row.Hat.OrganizerPersonId })
-                .ToListAsync()
-                .ConfigureAwait(false);
-
-            if (conflicts.Count > 0)
-            {
-                response = new RenamePersonResponse
-                {
-                    Outcome = NameChangeOutcome.NameAlreadyInExchange,
-                    PersonId = Guid.Empty,
-                    PreviousName = person.Name,
-                    ConflictingHatNames = conflicts
-                        .Where(conflict => conflict.OrganizerPersonId == requesterId)
-                        .Select(conflict => conflict.HatName)
-                        .Distinct()
-                        .ToImmutableList(),
-                    ConflictsElsewhere = conflicts
-                        .Any(conflict => conflict.OrganizerPersonId != requesterId)
-                };
-
-                return;
-            }
-
             var previousName = person.Name;
 
             person.Name = request.Name;
@@ -1704,9 +1647,7 @@ public class GiftExchangeProvider
             {
                 Outcome = NameChangeOutcome.Changed,
                 PersonId = person.PersonId,
-                PreviousName = previousName,
-                ConflictingHatNames = [],
-                ConflictsElsewhere = false
+                PreviousName = previousName
             };
         }).ConfigureAwait(false);
 
@@ -2002,6 +1943,8 @@ public class GiftExchangeProvider
             .FirstOrDefaultAsync()
             .ConfigureAwait(false);
 
+        var hatmates = await LoadHatmatesAsync(context, match.HatId).ConfigureAwait(false);
+
         return (true, new GiftIdeaRoute
         {
             ParticipantId = match.ParticipantId,
@@ -2018,7 +1961,8 @@ public class GiftExchangeProvider
                 ? Persons.Empty
                 : new Person { Name = giver.Name, Email = giver.Email },
             GiverParticipantId = giver?.ParticipantId ?? Guid.Empty,
-            AskId = Guid.Empty
+            AskId = Guid.Empty,
+            Hatmates = hatmates
         });
     }
 
@@ -2099,6 +2043,8 @@ public class GiftExchangeProvider
         if (match is null)
             return (false, GiftIdeaRoutes.Empty);
 
+        var hatmates = await LoadHatmatesAsync(context, match.HatId).ConfigureAwait(false);
+
         return (true, new GiftIdeaRoute
         {
             ParticipantId = match.ParticipantId,
@@ -2116,7 +2062,8 @@ public class GiftExchangeProvider
             // the ordinary path finds by looking for whoever holds the subject's name.
             Giver = new Person { Name = match.AskerName, Email = match.AskerEmail },
             GiverParticipantId = match.AskerParticipantId,
-            AskId = match.GiftIdeaAskId
+            AskId = match.GiftIdeaAskId,
+            Hatmates = hatmates
         });
     }
 
@@ -2129,7 +2076,7 @@ public class GiftExchangeProvider
     /// "what would you like?" or "what do you think they'd like?" is this application's problem,
     /// not theirs.
     ///
-    /// Names only, no addresses: see <see cref="AskCandidate"/>.
+    /// Names only, no addresses, unless two people share a name: see <see cref="AskCandidate"/>.
     /// </remarks>
     public async Task<ImmutableList<AskCandidate>> ListAskCandidatesAsync(Guid hatId, Guid askerParticipantId)
     {
@@ -2145,23 +2092,20 @@ public class GiftExchangeProvider
         if (asker is null)
             return [];
 
-        var candidates = await context.Participants
-            .AsNoTracking()
-            .Where(participant => participant.HatId == hatId
-                                  && participant.ParticipantId != askerParticipantId)
-            .Select(participant => new { participant.ParticipantId, participant.Person.Name })
-            .ToListAsync()
-            .ConfigureAwait(false);
+        // The whole hat, the asker included, so that two people sharing a name can be told apart.
+        var everybody = await LoadHatParticipantsAsync(context, hatId).ConfigureAwait(false);
+        var hatmates = everybody.Select(participant => participant.Person).ToImmutableList();
 
         // Sorted here rather than in SQL: the pick comes first whatever it is called, and a
         // database collation has no way to know that.
         return
         [
-            .. candidates
+            .. everybody
+                .Where(candidate => candidate.ParticipantId != askerParticipantId)
                 .Select(candidate => new AskCandidate
                 {
                     ParticipantId = candidate.ParticipantId,
-                    Name = candidate.Name,
+                    Name = ParticipantNaming.DisplayName(candidate.Person, hatmates),
                     IsTheirPick = candidate.ParticipantId == asker.PickedRecipientParticipantId
                 })
                 .OrderByDescending(candidate => candidate.IsTheirPick)
@@ -2184,7 +2128,7 @@ public class GiftExchangeProvider
     ///
     /// Sorted by name alone, with no pick to put first.
     ///
-    /// Names only, no addresses: see <see cref="OfferCandidate"/>.
+    /// Names only, no addresses, unless two people share a name: see <see cref="OfferCandidate"/>.
     /// </remarks>
     public async Task<ImmutableList<OfferCandidate>> ListOfferCandidatesAsync(
         Guid hatId,
@@ -2203,22 +2147,19 @@ public class GiftExchangeProvider
         if (sharer is null)
             return [];
 
-        var candidates = await context.Participants
-            .AsNoTracking()
-            .Where(participant => participant.HatId == hatId
-                                  && participant.ParticipantId != sharerParticipantId
-                                  && participant.ParticipantId != sharer.PickedRecipientParticipantId)
-            .Select(participant => new { participant.ParticipantId, participant.Person.Name })
-            .ToListAsync()
-            .ConfigureAwait(false);
+        // The whole hat, for the reason ListAskCandidatesAsync loads it.
+        var everybody = await LoadHatParticipantsAsync(context, hatId).ConfigureAwait(false);
+        var hatmates = everybody.Select(participant => participant.Person).ToImmutableList();
 
         return
         [
-            .. candidates
+            .. everybody
+                .Where(candidate => candidate.ParticipantId != sharerParticipantId
+                                    && candidate.ParticipantId != sharer.PickedRecipientParticipantId)
                 .Select(candidate => new OfferCandidate
                 {
                     ParticipantId = candidate.ParticipantId,
-                    Name = candidate.Name
+                    Name = ParticipantNaming.DisplayName(candidate.Person, hatmates)
                 })
                 .OrderBy(candidate => candidate.Name, StringComparer.CurrentCultureIgnoreCase)
         ];
@@ -2265,12 +2206,14 @@ public class GiftExchangeProvider
                                   && participant.HatId == request.HatId
                                   && participant.ParticipantId != request.SharerParticipantId
                                   && participant.ParticipantId != sharer.PickedRecipientParticipantId)
-            .Select(participant => new { participant.ParticipantId, participant.Person.Name })
+            .Select(participant => new { participant.ParticipantId, participant.Person.Name, participant.Person.Email })
             .SingleOrDefaultAsync()
             .ConfigureAwait(false);
 
         if (subject is null)
             return (false, OfferTargets.Empty);
+
+        var hatmates = await LoadHatmatesAsync(context, request.HatId).ConfigureAwait(false);
 
         // Who drew the subject, which is the inverse of a pick and so cannot be reached by
         // following one. Read separately rather than joined above: this is the part that may
@@ -2291,7 +2234,9 @@ public class GiftExchangeProvider
         return (true, new OfferTarget
         {
             SubjectParticipantId = subject.ParticipantId,
-            SubjectName = subject.Name,
+            SubjectName = ParticipantNaming.DisplayName(
+                new Person { Name = subject.Name, Email = subject.Email },
+                hatmates),
             GiverParticipantId = giver?.ParticipantId ?? Guid.Empty,
             Giver = giver is null
                 ? Persons.Empty
@@ -2836,7 +2781,7 @@ public class GiftExchangeProvider
 
         // Chosen from what the hat is already wearing, which the caller has in hand. Read from
         // those records rather than queried for: this is the same list the caller checked for a
-        // duplicate name against, and asking the database again would only be a second opinion on
+        // duplicate address against, and asking the database again would only be a second opinion on
         // a decision that does not need one -- two people added at the same instant may pick the
         // same face either way, and a face is decoration.
         var emoji = PersonEmoji.Assign(existingParticipants.Select(existing => existing.Emoji));
@@ -2876,7 +2821,7 @@ public class GiftExchangeProvider
 
         return new Participant
         {
-            PickedRecipient = string.Empty,
+            PickedRecipient = Persons.Empty,
             Person = new Person { Name = request.Name, Email = request.Email },
             Emoji = emoji,
             // Nothing has been sent to somebody who was added a moment ago.
@@ -2885,7 +2830,7 @@ public class GiftExchangeProvider
             DeliveryMessageType = string.Empty,
             DeliveryOccurredAt = DateTimeOffset.MinValue,
             EligibleRecipients = existingParticipants
-                .Select(existing => existing.Person.Name)
+                .Select(existing => existing.Person)
                 .ToImmutableList()
         };
     }
@@ -2908,7 +2853,7 @@ public class GiftExchangeProvider
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
         // The whole hat is loaded even though one participant is wanted. A pick is a participant id
-        // and the domain record carries a name, so resolving it means having that participant in
+        // and the domain record carries a person, so resolving it means having that participant in
         // hand; a hat holds a few dozen people at most, so fetching them all is cheaper than a
         // second round trip for the one being drawn.
         var participants = await LoadParticipantsAsync(context, requestOrganizerEmail, requestHatId)
@@ -2919,20 +2864,20 @@ public class GiftExchangeProvider
 
         return participant is null
             ? (false, Participants.Empty)
-            : (true, ToDomain(participant, NamesByParticipantId(participants)));
+            : (true, ToDomain(participant, PersonsByParticipantId(participants)));
     }
 
     public async Task AddParticipantEligibleRecipientAsync(
         string organizerEmail,
         Guid hatId,
         string participantEmail,
-        string recipientName
+        string recipientEmail
     )
     {
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
         var participantId = await FindParticipantIdByEmailAsync(context, hatId, participantEmail).ConfigureAwait(false);
-        var recipientId = await FindParticipantIdByNameAsync(context, hatId, recipientName).ConfigureAwait(false);
+        var recipientId = await FindParticipantIdByEmailAsync(context, hatId, recipientEmail).ConfigureAwait(false);
 
         if (participantId == Guid.Empty || recipientId == Guid.Empty)
         {
@@ -2960,11 +2905,15 @@ public class GiftExchangeProvider
     /// <summary>
     /// Replaces a participant's eligibility list. An empty list is simply no rows.
     /// </summary>
+    /// <remarks>
+    /// The recipients are addresses, because that is what identifies somebody within a hat; two
+    /// participants may share a name.
+    /// </remarks>
     public Task UpdateEligibleRecipientsAsync(
         string organizerEmail,
         Guid hatId,
         string participantEmail,
-        ImmutableList<string> eligibleRecipients
+        ImmutableList<string> eligibleRecipientEmails
     ) =>
         InTransactionAsync(async context =>
         {
@@ -2981,12 +2930,11 @@ public class GiftExchangeProvider
                 .ExecuteDeleteAsync()
                 .ConfigureAwait(false);
 
-            var normalized = eligibleRecipients.Select(Normalize).ToList();
+            var emails = eligibleRecipientEmails.ToList();
 
-            // ToLower, not ToLowerInvariant: see FindParticipantIdByNameAsync.
             var recipientIds = await context.Participants
                 .Where(candidate => candidate.HatId == hatId
-                                    && normalized.Contains(candidate.Person.Name.ToLower()))
+                                    && emails.Contains(candidate.Person.Email))
                 .Select(candidate => candidate.ParticipantId)
                 .ToListAsync()
                 .ConfigureAwait(false);
@@ -3110,7 +3058,7 @@ public class GiftExchangeProvider
         string organizerEmail,
         Guid hatId,
         string participantEmail,
-        string pickedRecipientName
+        string pickedRecipientEmail
     )
     {
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
@@ -3120,11 +3068,11 @@ public class GiftExchangeProvider
         if (participantId == Guid.Empty)
             return;
 
-        // An empty name clears the pick, and so does a name nobody in the hat goes by — both end up
-        // as the all-zero id, which is what "has not drawn" looks like.
-        var pickedId = string.IsNullOrWhiteSpace(pickedRecipientName)
+        // An empty address clears the pick, and so does an address nobody in the hat holds — both
+        // end up as the all-zero id, which is what "has not drawn" looks like.
+        var pickedId = string.IsNullOrWhiteSpace(pickedRecipientEmail)
             ? Guid.Empty
-            : await FindParticipantIdByNameAsync(context, hatId, pickedRecipientName).ConfigureAwait(false);
+            : await FindParticipantIdByEmailAsync(context, hatId, pickedRecipientEmail).ConfigureAwait(false);
 
         await context.Participants
             .Where(participant => participant.ParticipantId == participantId)
@@ -3136,12 +3084,12 @@ public class GiftExchangeProvider
     public async Task RemoveParticipantFromEligibleRecipientsAsync(
         string organizerEmail,
         Guid hatId,
-        string participantNameToRemove
+        string participantEmailToRemove
     )
     {
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
-        var participantId = await FindParticipantIdByNameAsync(context, hatId, participantNameToRemove).ConfigureAwait(false);
+        var participantId = await FindParticipantIdByEmailAsync(context, hatId, participantEmailToRemove).ConfigureAwait(false);
 
         if (participantId == Guid.Empty)
             return;
@@ -3345,6 +3293,31 @@ public class GiftExchangeProvider
         return await FindPersonIdByEmailAsync(reread, request.Email).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Everybody in a hat, as the people they are, for telling apart two who share a name.
+    /// </summary>
+    private static async Task<ImmutableList<Person>> LoadHatmatesAsync(GiftExchangeDbContext context, Guid hatId) =>
+        (await LoadHatParticipantsAsync(context, hatId).ConfigureAwait(false))
+            .Select(participant => participant.Person)
+            .ToImmutableList();
+
+    private static async Task<ImmutableList<(Guid ParticipantId, Person Person)>> LoadHatParticipantsAsync(
+        GiftExchangeDbContext context,
+        Guid hatId
+    )
+    {
+        var rows = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.HatId == hatId)
+            .Select(participant => new { participant.ParticipantId, participant.Person.Name, participant.Person.Email })
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return rows
+            .Select(row => (row.ParticipantId, new Person { Name = row.Name, Email = row.Email }))
+            .ToImmutableList();
+    }
+
     private static async Task<Guid> FindParticipantIdByEmailAsync(
         GiftExchangeDbContext context,
         Guid hatId,
@@ -3355,34 +3328,6 @@ public class GiftExchangeProvider
             .Select(participant => participant.ParticipantId)
             .FirstOrDefaultAsync()
             .ConfigureAwait(false);
-
-    /// <summary>
-    /// Name lookups exist because the domain records still identify participants by name. They
-    /// are only unambiguous because AddParticipantService refuses duplicate names within a hat.
-    /// </summary>
-    /// <remarks>
-    /// ToLower rather than ToLowerInvariant, and deliberately so. Inside a LINQ expression tree
-    /// this is never executed as a .NET string operation: EF translates it to SQL lower() and
-    /// Postgres does the folding under the column's collation, so there is no .NET culture
-    /// involved to get wrong. ToLowerInvariant has no translation at all and throws at query time.
-    /// Use ToLowerInvariant everywhere the comparison really does happen in memory — see
-    /// <see cref="Normalize"/>.
-    /// </remarks>
-    private static async Task<Guid> FindParticipantIdByNameAsync(
-        GiftExchangeDbContext context,
-        Guid hatId,
-        string name
-    )
-    {
-        var normalized = Normalize(name);
-
-        return await context.Participants
-            .Where(participant => participant.HatId == hatId
-                                  && participant.Person.Name.ToLower() == normalized)
-            .Select(participant => participant.ParticipantId)
-            .FirstOrDefaultAsync()
-            .ConfigureAwait(false);
-    }
 
     /// <summary>
     /// No delivery information. What the reads that do not ask for it get -- every participant
@@ -3398,33 +3343,33 @@ public class GiftExchangeProvider
         IReadOnlyDictionary<Guid, ParticipantEmailDeliveryEntity> deliveries
     )
     {
-        var namesByParticipantId = NamesByParticipantId(participants);
+        var personsByParticipantId = PersonsByParticipantId(participants);
 
         return participants
-            .Select(participant => ToDomain(participant, namesByParticipantId, deliveries))
+            .Select(participant => ToDomain(participant, personsByParticipantId, deliveries))
             .ToImmutableList();
     }
 
     /// <summary>
-    /// A pick is stored as a participant id and the domain record carries a name, so translating
+    /// A pick is stored as a participant id and the domain record carries a person, so translating
     /// one needs the rest of the hat. There is no navigation to follow instead: a reference
     /// navigation would have made EF emit a foreign key, and the all-zero id standing for "has not
     /// drawn" would fail it.
     /// </summary>
-    private static Dictionary<Guid, string> NamesByParticipantId(ICollection<ParticipantEntity> participants) =>
+    private static Dictionary<Guid, Person> PersonsByParticipantId(ICollection<ParticipantEntity> participants) =>
         participants.ToDictionary(
             participant => participant.ParticipantId,
-            participant => participant.Person.Name);
+            participant => new Person { Name = participant.Person.Name, Email = participant.Person.Email });
 
     private static Participant ToDomain(
         ParticipantEntity participant,
-        IReadOnlyDictionary<Guid, string> namesByParticipantId
+        IReadOnlyDictionary<Guid, Person> personsByParticipantId
     ) =>
-        ToDomain(participant, namesByParticipantId, NoDeliveries);
+        ToDomain(participant, personsByParticipantId, NoDeliveries);
 
     private static Participant ToDomain(
         ParticipantEntity participant,
-        IReadOnlyDictionary<Guid, string> namesByParticipantId,
+        IReadOnlyDictionary<Guid, Person> personsByParticipantId,
         IReadOnlyDictionary<Guid, ParticipantEmailDeliveryEntity> deliveries
     )
     {
@@ -3435,15 +3380,19 @@ public class GiftExchangeProvider
 
         return new Participant
         {
-            // Guid.Empty is in no hat, so an undrawn participant falls through to the empty name
+            // Guid.Empty is in no hat, so an undrawn participant falls through to the empty person
             // without being asked about separately.
-            PickedRecipient = namesByParticipantId.GetValueOrDefault(
+            PickedRecipient = personsByParticipantId.GetValueOrDefault(
                 participant.PickedRecipientParticipantId,
-                string.Empty),
+                Persons.Empty),
             Person = new Person { Name = participant.Person.Name, Email = participant.Person.Email },
             Emoji = participant.Emoji,
             EligibleRecipients = participant.EligibleRecipients
-                .Select(row => row.EligibleParticipant.Person.Name)
+                .Select(row => new Person
+                {
+                    Name = row.EligibleParticipant.Person.Name,
+                    Email = row.EligibleParticipant.Person.Email
+                })
                 .ToImmutableList(),
             DeliveryStatus = delivery?.Status ?? Models.DeliveryStatus.Unknown,
             DeliveryDetail = delivery?.Detail ?? string.Empty,

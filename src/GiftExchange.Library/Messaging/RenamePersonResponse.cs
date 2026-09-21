@@ -16,24 +16,6 @@ internal record RenamePersonResponse
     /// changed rather than only that something did.
     /// </summary>
     public required string PreviousName { get; init; }
-
-    /// <summary>
-    /// Exchanges run by the caller where the new name is already taken. Empty unless
-    /// <see cref="Outcome"/> is <see cref="NameChangeOutcome.NameAlreadyInExchange"/>, and empty
-    /// even then when the only collisions are in exchanges somebody else runs.
-    /// </summary>
-    public required ImmutableList<string> ConflictingHatNames { get; init; }
-
-    /// <summary>
-    /// Whether the new name is taken in an exchange the caller does not run.
-    /// </summary>
-    /// <remarks>
-    /// A flag rather than a list, deliberately. The caller needs to know that a rename they cannot
-    /// see the reason for is being refused, and needs to be able to tell that from a collision in
-    /// one of their own exchanges — but naming another organizer's exchange, or counting them,
-    /// would tell them things about somebody else's guest list that they have no standing to learn.
-    /// </remarks>
-    public required bool ConflictsElsewhere { get; init; }
 }
 
 internal static class RenamePersonResponses
@@ -44,8 +26,6 @@ internal static class RenamePersonResponses
         {
             Outcome = outcome,
             PersonId = Guid.Empty,
-            PreviousName = string.Empty,
-            ConflictingHatNames = [],
-            ConflictsElsewhere = false
+            PreviousName = string.Empty
         };
 }

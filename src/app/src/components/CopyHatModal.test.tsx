@@ -4,15 +4,19 @@ import { vi } from 'vitest'
 import { CopyHatModal, suggestCopyName } from './CopyHatModal'
 import { Participant } from '../api'
 
+function person(name: string) {
+  return { name, email: `${name.toLowerCase()}@example.com` }
+}
+
 function participant(
   name: string,
   pickedRecipient: string,
   eligibleRecipients: string[]
 ): Participant {
   return {
-    person: { name, email: `${name.toLowerCase()}@example.com` },
-    pickedRecipient,
-    eligibleRecipients,
+    person: person(name),
+    pickedRecipient: person(pickedRecipient),
+    eligibleRecipients: eligibleRecipients.map(person),
     // A face, because every participant has one. Nothing this dialog does looks at it.
     emoji: '😀',
     // Nothing heard. Copying a hat has nothing to do with what was delivered from the one it came

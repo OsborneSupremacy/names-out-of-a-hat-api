@@ -187,6 +187,38 @@ public class CompletionEmailCompositionServiceTests
     }
 
     /// <summary>
+    /// Two people in one exchange may share a name, and a list in which Sam gives to Sam says
+    /// nothing. Both are named with their address; everybody else keeps their bare name.
+    /// </summary>
+    [Fact]
+    public void ComposeEmail_GivenTwoParticipantsSharingAName_NamesBothWithTheirAddress()
+    {
+        // arrange
+        var alice = new Person { Name = "Alice", Email = "alice@example.com" };
+        var firstSam = new Person { Name = "Sam", Email = "sam.one@example.com" };
+        var secondSam = new Person { Name = "Sam", Email = "sam.two@example.com" };
+
+        var hat = HatFor("Family Christmas") with
+        {
+            Participants =
+            [
+                Participants.Empty with { Person = alice, PickedRecipient = firstSam, Emoji = "😀" },
+                Participants.Empty with { Person = firstSam, PickedRecipient = secondSam, Emoji = "🤠" },
+                Participants.Empty with { Person = secondSam, PickedRecipient = alice, Emoji = "🥳" }
+            ]
+        };
+
+        // act
+        var body = ReadAsSent(_sut.ComposeEmail(hat, "Alice"));
+
+        // assert
+        body.Should().Contain("😀 Alice &rarr; 🤠 Sam (sam.one@example.com)");
+        body.Should().Contain("🤠 Sam (sam.one@example.com) &rarr; 🥳 Sam (sam.two@example.com)");
+        body.Should().Contain("🥳 Sam (sam.two@example.com) &rarr; 😀 Alice");
+        body.Should().NotContain("alice@example.com");
+    }
+
+    /// <summary>
     /// Names of very different lengths, which is the case the table is for: read as running text
     /// the arrows would start in three different places.
     /// </summary>
@@ -219,7 +251,11 @@ public class CompletionEmailCompositionServiceTests
         new()
         {
             Person = new Person { Name = name, Email = email },
-            PickedRecipient = pickedRecipient,
+            // Everybody in these hats is at their own name at example.com, so a pick named here is
+            // found at the address it would have in the hat.
+            PickedRecipient = string.IsNullOrEmpty(pickedRecipient)
+                ? Persons.Empty
+                : new Person { Name = pickedRecipient, Email = $"{pickedRecipient.ToLowerInvariant()}@example.com" },
             EligibleRecipients = [],
             Emoji = emoji,
             DeliveryStatus = DeliveryStatus.Unknown,

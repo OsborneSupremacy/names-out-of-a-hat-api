@@ -147,7 +147,7 @@ public class ParticipantEmojiTests
                 exchange.OrganizerEmail,
                 exchange.HatId,
                 exchange.Participants[index].Person.Email,
-                exchange.Participants[(index + 1) % exchange.Participants.Count].Person.Name);
+                exchange.Participants[(index + 1) % exchange.Participants.Count].Person.Email);
 
         await _provider.UpdateHatStatusAsync(exchange.OrganizerEmail, exchange.HatId, HatStatus.InvitationsSent);
 
@@ -165,7 +165,7 @@ public class ParticipantEmojiTests
         hat.Status.Should().Be(HatStatus.InvitationsSent);
         hat.Participants
             .Single(participant => participant.Person.Email == target.Person.Email)
-            .PickedRecipient.Should().Be(exchange.Participants[1].Person.Name);
+            .PickedRecipient.Should().Be(exchange.Participants[1].Person);
     }
 
     [Fact]

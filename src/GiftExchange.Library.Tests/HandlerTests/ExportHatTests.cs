@@ -107,7 +107,7 @@ public class ExportHatTests
         exported.EligibleRecipients
             .Select(reference => reference.Name)
             .Should()
-            .BeEquivalentTo(beta.EligibleRecipients);
+            .BeEquivalentTo(beta.EligibleRecipients.Select(recipient => recipient.Name));
     }
 
     /// <summary>
@@ -155,13 +155,13 @@ public class ExportHatTests
         var byEmail = export.Hat.Participants.ToDictionary(participant => participant.Person.Email);
 
         foreach (var participant in source.Participants)
-            byEmail[participant.Person.Email].PickedRecipient.Name.Should().Be(participant.PickedRecipient);
+            byEmail[participant.Person.Email].PickedRecipient.Name.Should().Be(participant.PickedRecipient.Name);
 
         // And the reference resolves, rather than only reading correctly.
         var alpha = byEmail[source.Participants[0].Person.Email];
         var drawn = export.Hat.Participants.Single(participant => participant.ParticipantId == alpha.PickedRecipient.ParticipantId);
 
-        drawn.Person.Name.Should().Be(source.Participants[0].PickedRecipient);
+        drawn.Person.Email.Should().Be(source.Participants[0].PickedRecipient.Email);
     }
 
     /// <summary>
@@ -253,7 +253,7 @@ public class ExportHatTests
         var charlie = await AddParticipantAsync(hat, [alpha, beta]);
 
         await _giftExchangeProvider.UpdateEligibleRecipientsAsync(
-            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Name]);
+            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Email]);
 
         await PickAsync(hat, alpha, beta);
         await PickAsync(hat, beta, alpha);
@@ -276,7 +276,7 @@ public class ExportHatTests
 
     private Task PickAsync(HatDataModel hat, Participant giver, Participant recipient) =>
         _giftExchangeProvider.UpdateParticipantPickedRecipientAsync(
-            hat.OrganizerEmail, hat.HatId, giver.Person.Email, recipient.Person.Name);
+            hat.OrganizerEmail, hat.HatId, giver.Person.Email, recipient.Person.Email);
 
     private static APIGatewayProxyRequest RequestFor(Guid hatId, string authenticatedEmail) =>
         new APIGatewayProxyRequest

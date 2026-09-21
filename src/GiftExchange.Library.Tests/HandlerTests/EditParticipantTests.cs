@@ -39,7 +39,7 @@ public class EditParticipantTests
     public async Task EditParticipant_ValidPayload_OkResponse()
     {
         // arrange
-        var participantNames = new List<string>();
+        var participantEmails = new List<string>();
 
         var hat = await _testDataService.CreateTestHatAsync();
 
@@ -52,7 +52,7 @@ public class EditParticipantTests
             Email = hat.Organizer.Email
         }, []);
 
-        participantNames.Add(hat.Organizer.Name);
+        participantEmails.Add(hat.Organizer.Email);
 
         // add other participants
         foreach(var otherParticipant in _addParticipantRequestFaker.Generate(5))
@@ -62,7 +62,7 @@ public class EditParticipantTests
                 OrganizerEmail = hat.Organizer.Email,
                 HatId = hat.Id
             }, []);
-            participantNames.Add(otherParticipant.Name);
+            participantEmails.Add(otherParticipant.Email);
         }
 
         // add participant to be edited
@@ -79,7 +79,7 @@ public class EditParticipantTests
             OrganizerEmail = hat.Organizer.Email,
             HatId = hat.Id,
             Email = participantUt.Email,
-            EligibleRecipients = participantNames.ToImmutableList()
+            EligibleRecipients = participantEmails.ToImmutableList()
         };
 
         var apiRequest = _jsonService
@@ -97,6 +97,66 @@ public class EditParticipantTests
 
         // assert
         response.StatusCode.Should().Be((int)HttpStatusCode.OK);
-        updatedParticipant.EligibleRecipients.Should().BeEquivalentTo(participantNames);
+        updatedParticipant.EligibleRecipients.Select(recipient => recipient.Email).Should().BeEquivalentTo(participantEmails);
+    }
+
+    /// <summary>
+    /// Two people in one exchange may share a name, so eligibility is stated by address. Naming one
+    /// of two Sams has to leave the other one out.
+    /// </summary>
+    [Fact]
+    public async Task EditParticipant_GivenTwoParticipantsWithTheSameName_KeepsThemApart()
+    {
+        // arrange
+        var hat = await _testDataService.CreateTestHatAsync();
+
+        var firstSam = _addParticipantRequestFaker.Generate() with
+        {
+            OrganizerEmail = hat.Organizer.Email,
+            HatId = hat.Id,
+            Name = "Sam"
+        };
+
+        var secondSam = _addParticipantRequestFaker.Generate() with
+        {
+            OrganizerEmail = hat.Organizer.Email,
+            HatId = hat.Id,
+            Name = "Sam"
+        };
+
+        var participantUt = _addParticipantRequestFaker.Generate() with
+        {
+            OrganizerEmail = hat.Organizer.Email,
+            HatId = hat.Id
+        };
+
+        await _testDataService.CreateParticipantAsync(firstSam, []);
+        await _testDataService.CreateParticipantAsync(secondSam, []);
+        await _testDataService.CreateParticipantAsync(participantUt, []);
+
+        var apiRequest = _jsonService
+            .SerializeDefault(new EditParticipantRequest
+            {
+                OrganizerEmail = hat.Organizer.Email,
+                HatId = hat.Id,
+                Email = participantUt.Email,
+                EligibleRecipients = [secondSam.Email]
+            })
+            .ToApiGatewayProxyRequest();
+
+        // act
+        var response = await _sut.FunctionHandler(apiRequest, _context);
+
+        var updatedParticipant = await _testDataService.GetParticipantAsync(
+            hat.Organizer.Email,
+            hat.Id,
+            participantUt.Email
+        );
+
+        // assert
+        response.StatusCode.Should().Be((int)HttpStatusCode.OK);
+        updatedParticipant.EligibleRecipients
+            .Should().ContainSingle()
+            .Which.Email.Should().Be(secondSam.Email);
     }
 }

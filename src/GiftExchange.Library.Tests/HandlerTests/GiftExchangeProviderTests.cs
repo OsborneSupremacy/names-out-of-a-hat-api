@@ -148,9 +148,9 @@ public class GiftExchangeProviderTests
         // act
         var (exists, stored) = await _sut.GetParticipantAsync(hat.OrganizerEmail, hat.HatId, second.Person.Email);
 
-        // assert: eligibility is stored by id and read back as a name.
+        // assert: eligibility is stored by id and read back as a person.
         exists.Should().BeTrue();
-        stored.EligibleRecipients.Should().ContainSingle().Which.Should().Be(first.Person.Name);
+        stored.EligibleRecipients.Should().ContainSingle().Which.Should().Be(first.Person);
     }
 
     [Fact]
@@ -181,12 +181,12 @@ public class GiftExchangeProviderTests
         var beta = await _sut.CreateParticipantAsync(ParticipantRequestFor(hat), [alpha]);
 
         await _sut.UpdateEligibleRecipientsAsync(
-            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Name]);
+            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Email]);
 
         // act: removing Alpha leaves Beta with nobody to draw. Writing that back to DynamoDB meant
         // an empty string set, which it refuses, so the request failed with a 500 partway through.
         var act = async () => await _sut.RemoveParticipantFromEligibleRecipientsAsync(
-            hat.OrganizerEmail, hat.HatId, alpha.Person.Name);
+            hat.OrganizerEmail, hat.HatId, alpha.Person.Email);
 
         // assert
         await act.Should().NotThrowAsync();
@@ -204,7 +204,7 @@ public class GiftExchangeProviderTests
         var giver = await _sut.CreateParticipantAsync(ParticipantRequestFor(hat), [receiver]);
 
         await _sut.UpdateParticipantPickedRecipientAsync(
-            hat.OrganizerEmail, hat.HatId, giver.Person.Email, receiver.Person.Name);
+            hat.OrganizerEmail, hat.HatId, giver.Person.Email, receiver.Person.Email);
 
         // act: without foreign keys nothing cascades, so the pick has to be cleared explicitly or
         // it dangles at a participant who no longer exists.
@@ -213,7 +213,7 @@ public class GiftExchangeProviderTests
         // assert
         var (exists, stored) = await _sut.GetParticipantAsync(hat.OrganizerEmail, hat.HatId, giver.Person.Email);
         exists.Should().BeTrue();
-        stored.PickedRecipient.Should().BeEmpty();
+        stored.PickedRecipient.Should().Be(Persons.Empty);
     }
 
     [Fact]
@@ -237,13 +237,13 @@ public class GiftExchangeProviderTests
 
         // act
         await provider.UpdateEligibleRecipientsAsync(
-            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Name]);
+            hat.OrganizerEmail, hat.HatId, beta.Person.Email, [alpha.Person.Email]);
 
         // assert
         recorder.SavepointsCreated.Should().Be(0);
 
         var (_, stored) = await provider.GetParticipantAsync(hat.OrganizerEmail, hat.HatId, beta.Person.Email);
-        stored.EligibleRecipients.Should().ContainSingle().Which.Should().Be(alpha.Person.Name);
+        stored.EligibleRecipients.Should().ContainSingle().Which.Should().Be(alpha.Person);
     }
 
     [Fact]

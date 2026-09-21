@@ -729,9 +729,9 @@ public class ShareGiftIdeasServiceTests
         var beta = await AddAsync(hat, "Beta");
         var gamma = await AddAsync(hat, "Gamma");
 
-        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, alpha, "Beta");
-        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, beta, "Gamma");
-        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, gamma, "Alpha");
+        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, alpha, beta);
+        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, beta, gamma);
+        await _provider.UpdateParticipantPickedRecipientAsync(hat.OrganizerEmail, hat.HatId, gamma, alpha);
         await _provider.UpdateHatStatusAsync(hat.OrganizerEmail, hat.HatId, HatStatus.InvitationsSent);
 
         var tokens = await _provider.IssueGiftIdeaTokensAsync(hat.HatId);

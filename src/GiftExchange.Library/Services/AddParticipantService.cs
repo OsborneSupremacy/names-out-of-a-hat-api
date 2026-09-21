@@ -61,10 +61,12 @@ internal class AddParticipantService : IApiGatewayHandler
             .GetParticipantsAsync(request.OrganizerEmail, request.HatId)
             .ConfigureAwait(false);
 
-        // Check if a participant with the same email or name already exists
-        if(existingParticipants
-           .Any(p => p.Person.Email.ContentEquals(request.Email) || p.Person.Name.Equals(request.Name, StringComparison.OrdinalIgnoreCase)))
-            return new Result<StatusCodeOnlyResponse>(new InvalidOperationException("Participant with provided email or name already exists. Participants must have unique email addresses and names."), HttpStatusCode.Conflict);
+        // The same person may not be in one exchange twice, and the address is what says who a
+        // person is. Names are another matter: a person is one row shared by every exchange they
+        // are in, so two people called Sam is an ordinary thing for an exchange to hold, and
+        // anything naming one of them to somebody else adds the address — see ParticipantNaming.
+        if (existingParticipants.Any(p => p.Person.Email.ContentEquals(request.Email)))
+            return new Result<StatusCodeOnlyResponse>(new InvalidOperationException("Somebody with that email address is already in this gift exchange."), HttpStatusCode.Conflict);
 
         // After the duplicate check and before the write. Somebody who has refused this exchange, or
         // this organizer, or all of them, is not added back by an organizer typing their address in
@@ -118,7 +120,7 @@ internal class AddParticipantService : IApiGatewayHandler
                         request.OrganizerEmail,
                         request.HatId,
                         participant.Person.Email,
-                        request.Name
+                        request.Email
                     ))
             .ToList();
 

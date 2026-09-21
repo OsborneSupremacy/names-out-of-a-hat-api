@@ -57,6 +57,10 @@ export interface EditParticipantRequest {
   organizerEmail: string
   hatId: string
   email: string
+  /**
+   * The email addresses of the participants this one may draw. Addresses rather than names,
+   * because two participants in one exchange may share a name.
+   */
   eligibleRecipients: string[]
 }
 
@@ -228,13 +232,23 @@ export interface ResetHatRequest {
   hatId: string
 }
 
+export interface Person {
+  name: string
+  email: string
+}
+
 export interface Participant {
-  person: {
-    name: string
-    email: string
-  }
-  pickedRecipient: string
-  eligibleRecipients: string[]
+  person: Person
+  /**
+   * Who this participant drew. Both fields are empty before the hat is shaken, and the name is
+   * "Hidden" until the exchange is closed.
+   */
+  pickedRecipient: Person
+  /**
+   * Who this participant may draw. People rather than names, because two participants in one
+   * exchange may share a name; the address is what tells them apart.
+   */
+  eligibleRecipients: Person[]
   /**
    * The face this participant is marked with wherever they are named, here and in the email that
    * tells somebody they drew them. One of a closed list the server owns, so it is rendered as it
@@ -439,10 +453,10 @@ export async function editParticipantEmoji(request: EditParticipantEmojiRequest)
  * that call resets the exchange to IN_PROGRESS, and a name has nothing to do with the draw —
  * eligibility and picks are held server-side as ids, so a rename cannot invalidate one.
  *
- * Two refusals are worth knowing about at the call site, both surfaced as the server's own message:
- * 409 when somebody in an exchange this person is in already goes by the new name, and 403 when the
- * caller neither is that person nor added them. Nothing in the participant payload says which
- * organizer introduced whom, so the 403 can only be found out by asking.
+ * One refusal is worth knowing about at the call site, surfaced as the server's own message: 403 when
+ * the caller neither is that person nor added them. Nothing in the participant payload says which
+ * organizer introduced whom, so it can only be found out by asking. A name somebody else already
+ * goes by is not refused — two participants may share one.
  */
 export async function editParticipantName(request: EditParticipantNameRequest): Promise<void> {
   const headers = await getAuthHeaders()

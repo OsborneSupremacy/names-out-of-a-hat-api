@@ -32,6 +32,7 @@ import {
 } from '../deliveryStatus'
 import { formatRelativeTime, formatDateAndTime } from '../relativeTime'
 import { MAX_PARTICIPANTS } from '../participantLimit'
+import { displayName } from '../participantNaming'
 import { EditAddressModal, ResendKind } from '../components/EditAddressModal'
 import { EditEmojiModal } from '../components/EditEmojiModal'
 import { EditParticipantNameModal } from '../components/EditParticipantNameModal'
@@ -350,9 +351,8 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
    * Renaming one participant.
    *
    * The dialog stays open on a failure, which matters more here than for the other two edits: the
-   * refusals this can return are explanations rather than glitches — somebody else already goes by
-   * that name, or the name is not this organizer's to change — and both are read while looking at
-   * the box that caused them.
+   * refusal this can return is an explanation rather than a glitch — the name is not this
+   * organizer's to change — and it is read while looking at the box that caused it.
    *
    * A notice afterwards, unlike the emoji edit, because the change is not confined to what the
    * organizer can see. The row will show the new name when the reload lands; the sentence is there
@@ -394,22 +394,27 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
    * The face worn by whoever this participant drew, or nothing.
    *
    * Nothing is the ordinary case before the exchange is closed: the API replaces every pick with
-   * "Hidden" until then, which matches nobody here — so the column shows a name with no face
+   * "Hidden" until then, at an address nobody here holds — so the column shows a name with no face
    * against it rather than a face belonging to somebody else.
+   *
+   * Found by address rather than by name, because two participants may share a name.
    */
-  const emojiForName = (name: string) =>
-    hat?.participants.find(participant => participant.person.name === name)?.emoji ?? ''
+  const emojiForEmail = (email: string) =>
+    email ? hat?.participants.find(participant => participant.person.email === email)?.emoji ?? '' : ''
 
-  const handleEditEligibleRecipients = (participantEmail: string, currentEligible: string[]) => {
+  /** Everybody in the exchange, for telling apart two people who share a name. */
+  const people = hat?.participants.map(participant => participant.person) ?? []
+
+  const handleEditEligibleRecipients = (participantEmail: string, currentEligibleEmails: string[]) => {
     setEditingEligibleFor(participantEmail)
-    setTempEligibleRecipients(currentEligible)
+    setTempEligibleRecipients(currentEligibleEmails)
   }
 
-  const handleToggleEligible = (recipientName: string) => {
+  const handleToggleEligible = (recipientEmail: string) => {
     setTempEligibleRecipients(prev =>
-      prev.includes(recipientName)
-        ? prev.filter(e => e !== recipientName)
-        : [...prev, recipientName]
+      prev.includes(recipientEmail)
+        ? prev.filter(e => e !== recipientEmail)
+        : [...prev, recipientEmail]
     )
   }
 
@@ -1101,12 +1106,12 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                                   * pick reads "Hidden", which matches nobody and carries no face.
                                   */}
                                 <strong>
-                                  {emojiForName(participant.pickedRecipient) && (
+                                  {emojiForEmail(participant.pickedRecipient.email) && (
                                     <span className="participant-emoji">
-                                      {emojiForName(participant.pickedRecipient)}{' '}
+                                      {emojiForEmail(participant.pickedRecipient.email)}{' '}
                                     </span>
                                   )}
-                                  {participant.pickedRecipient || 'Not assigned'}
+                                  {displayName(participant.pickedRecipient, people) || 'Not assigned'}
                                 </strong>
                               </td>
                               <td>
@@ -1147,12 +1152,14 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                           const isOrganizer = participant.person.email === hat.organizer.email
                           const isEditingThis = editingEligibleFor === participant.person.email
                           const otherParticipants = hat.participants.filter(p => p.person.email !== participant.person.email)
+                          // By address, because two participants may share a name.
+                          const eligibleEmails = participant.eligibleRecipients.map(recipient => recipient.email)
                           const eligibleRecipients = otherParticipants
-                            .filter(otherParticipant => participant.eligibleRecipients.includes(otherParticipant.person.name))
-                            .map(otherParticipant => otherParticipant.person.name)
+                            .filter(otherParticipant => eligibleEmails.includes(otherParticipant.person.email))
+                            .map(otherParticipant => otherParticipant.person)
                           const ineligibleRecipients = otherParticipants
-                            .filter(otherParticipant => !participant.eligibleRecipients.includes(otherParticipant.person.name))
-                            .map(otherParticipant => otherParticipant.person.name)
+                            .filter(otherParticipant => !eligibleEmails.includes(otherParticipant.person.email))
+                            .map(otherParticipant => otherParticipant.person)
 
                           return (
                             <tr
@@ -1164,7 +1171,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                               ].filter(Boolean).join(' ')}
                               onClick={() => canEditEligibility && !isEditingThis && handleEditEligibleRecipients(
                                 participant.person.email,
-                                participant.eligibleRecipients
+                                eligibleEmails
                               )}
                             >
                               <td>
@@ -1232,16 +1239,16 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                                         <>
                                           <div className="recipients-list">
                                             {otherParticipants.map((otherParticipant) => {
-                                              const eligible = tempEligibleRecipients.includes(otherParticipant.person.name)
+                                              const eligible = tempEligibleRecipients.includes(otherParticipant.person.email)
 
                                               return (
                                                 <label key={otherParticipant.person.email} className="recipient-checkbox">
                                                   <input
                                                     type="checkbox"
                                                     checked={eligible}
-                                                    onChange={() => handleToggleEligible(otherParticipant.person.name)}
+                                                    onChange={() => handleToggleEligible(otherParticipant.person.email)}
                                                   />
-                                                  <span>{otherParticipant.person.name}</span>
+                                                  <span>{displayName(otherParticipant.person, people)}</span>
                                                 </label>
                                               )
                                             })}
@@ -1270,8 +1277,8 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                                             <span className="recipient-group-label">Eligible</span>
                                             {eligibleRecipients.length > 0 ? (
                                               <div className="recipient-chips">
-                                                {eligibleRecipients.map((name, nameIndex) => (
-                                                  <span key={`${name}-${nameIndex}`} className="recipient-chip">{name}</span>
+                                                {eligibleRecipients.map((recipient) => (
+                                                  <span key={recipient.email} className="recipient-chip">{displayName(recipient, people)}</span>
                                                 ))}
                                               </div>
                                             ) : (
@@ -1282,8 +1289,8 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                                             <div className="recipient-group recipient-group-ineligible">
                                               <span className="recipient-group-label">Ineligible</span>
                                               <div className="recipient-chips">
-                                                {ineligibleRecipients.map((name, nameIndex) => (
-                                                  <span key={`${name}-${nameIndex}`} className="recipient-chip">{name}</span>
+                                                {ineligibleRecipients.map((recipient) => (
+                                                  <span key={recipient.email} className="recipient-chip">{displayName(recipient, people)}</span>
                                                 ))}
                                               </div>
                                             </div>

@@ -4,8 +4,14 @@
   "type": "object",
   "properties": {
     "pickedRecipient": {
-      "type": "string",
-      "description": "The name of the person this participant gives a gift to. Empty before the hat is shaken, and 'Hidden' until the hat is closed."
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["name", "email"],
+      "additionalProperties": false,
+      "description": "The person this participant gives a gift to. Name and email are both empty before the hat is shaken, and the name is 'Hidden' until the hat is closed."
     },
     "person": {
       "$ref": "#/definitions/person",
@@ -14,9 +20,9 @@
     "eligibleRecipients": {
       "type": "array",
       "items": {
-        "type": "string"
+        "$ref": "#/definitions/person"
       },
-      "description": "The names this participant is allowed to draw."
+      "description": "The people this participant is allowed to draw. People rather than names, because two participants may share a name."
     },
     "emoji": {
       "type": "string",

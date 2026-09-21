@@ -62,16 +62,18 @@ internal class EditParticipantService : IApiGatewayHandler
         if(request.EligibleRecipients.Count == 0)
             return new Result<StatusCodeOnlyResponse>(new ArgumentException("Participant must have at least one eligible recipient"), HttpStatusCode.BadRequest);
 
-        if(request.EligibleRecipients.Contains(participant.Person.Name, StringComparer.OrdinalIgnoreCase))
+        // By address, because that is what identifies somebody within a hat. Two participants may
+        // share a name, so a list of names could not say which of them was meant.
+        if(request.EligibleRecipients.Any(email => email.ContentEquals(participant.Person.Email)))
             return new Result<StatusCodeOnlyResponse>(new ArgumentException("Participant cannot set themselves as an eligible recipient"), HttpStatusCode.BadRequest);
 
         var otherParticipants = hat.Participants
-            .Where(p => !p.Person.Name.ContentEquals(participant.Person.Name))
-            .Select(p => p.Person.Name)
+            .Where(p => !p.Person.Email.ContentEquals(participant.Person.Email))
+            .Select(p => p.Person)
             .ToImmutableList();
 
         var invalidRecipients = request.EligibleRecipients
-            .Where(r => !otherParticipants.Contains(r, StringComparer.OrdinalIgnoreCase))
+            .Where(email => !otherParticipants.Any(p => p.Email.ContentEquals(email)))
             .ToImmutableList();
 
         if (invalidRecipients.Any())
@@ -79,7 +81,7 @@ internal class EditParticipantService : IApiGatewayHandler
             var errorMessage = $"""
                                 One or more provided recipients are not part of this gift exchange.
 
-                                Gift exchange participants: {string.Join(", ", otherParticipants)}
+                                Gift exchange participants: {string.Join(", ", otherParticipants.Select(p => p.Email))}
                                 Provided Recipients: {string.Join(", ", request.EligibleRecipients)}
                                 Invalid Recipients: {string.Join(", ", invalidRecipients)}
 
@@ -89,12 +91,19 @@ internal class EditParticipantService : IApiGatewayHandler
             return new Result<StatusCodeOnlyResponse>(new ArgumentException(errorMessage), HttpStatusCode.BadRequest);
         }
 
+        // Written as the addresses the hat holds rather than as they were sent, so that a
+        // difference in capitalisation does not quietly drop somebody the organizer ticked.
+        var eligibleRecipientEmails = otherParticipants
+            .Where(p => request.EligibleRecipients.Any(email => email.ContentEquals(p.Email)))
+            .Select(p => p.Email)
+            .ToImmutableList();
+
         await _giftExchangeProvider
             .UpdateEligibleRecipientsAsync(
                 request.OrganizerEmail,
                 request.HatId,
                 request.Email,
-                request.EligibleRecipients
+                eligibleRecipientEmails
             )
             .ConfigureAwait(false);
 

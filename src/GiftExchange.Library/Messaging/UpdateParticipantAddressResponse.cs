@@ -24,7 +24,7 @@ internal record UpdateParticipantAddressResponse
     /// Usually unchanged, and worth returning anyway. A name belongs to a person rather than to a
     /// participant, so moving somebody onto an address that already belongs to one adopts that
     /// person's name — and the email composed next has to greet them by the name they now have.
-    /// On a refusal this is the name that caused it, which is what the message needs to quote.
+    /// Empty on a refusal.
     /// </remarks>
     public required string Name { get; init; }
 }

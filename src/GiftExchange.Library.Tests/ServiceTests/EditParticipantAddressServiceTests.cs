@@ -260,7 +260,7 @@ public class EditParticipantAddressServiceTests
 
         hat.Participants
             .Single(participant => participant.Person.Email == "fixed@example.com")
-            .PickedRecipient.Should().Be(exchange.TargetPickedName, "the draw is untouched");
+            .PickedRecipient.Name.Should().Be(exchange.TargetPickedName, "the draw is untouched");
     }
 
     [Fact]
@@ -452,7 +452,7 @@ public class EditParticipantAddressServiceTests
                 hat.OrganizerEmail,
                 hat.HatId,
                 created[index].Person.Email,
-                created[(index + 1) % created.Count].Person.Name);
+                created[(index + 1) % created.Count].Person.Email);
 
         await _provider.UpdateHatStatusAsync(hat.OrganizerEmail, hat.HatId, status);
 

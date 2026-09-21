@@ -131,10 +131,6 @@ internal class EditParticipantNameService : IApiGatewayHandler
                 new KeyNotFoundException($"Participant with email `{request.Email}` not found"),
                 HttpStatusCode.NotFound),
 
-            NameChangeOutcome.NameAlreadyInExchange => new Result<StatusCodeOnlyResponse>(
-                new InvalidOperationException(ConflictMessage(change, request.Name)),
-                HttpStatusCode.Conflict),
-
             // Forbidden rather than Conflict, for the reason AddParticipantService answers a
             // refused address with it: a conflict says the request collided with something and
             // could be retried differently, and no name will make this one work. It is not about
@@ -158,27 +154,4 @@ internal class EditParticipantNameService : IApiGatewayHandler
     /// </remarks>
     private static string NotYoursMessage(string currentName) =>
         $"{currentName} was added to a gift exchange by somebody else, and a name belongs to the person rather than to one exchange — so this one is not yours to change. They can change it themselves, and so can whoever first added them.";
-
-    /// <summary>
-    /// Says where the new name is already taken, in the terms the organizer is entitled to hear it.
-    /// </summary>
-    /// <remarks>
-    /// Their own exchanges are named, because those are the ones they can go and fix. An exchange
-    /// somebody else runs is not, and is not counted either: the refusal has to be explicable, and
-    /// nothing more than that is theirs to know. The two are worth telling apart — one is a message
-    /// about work the organizer can do, the other about a rename they will have to make differently.
-    /// </remarks>
-    private static string ConflictMessage(RenamePersonResponse change, string name)
-    {
-        if (change.ConflictingHatNames.Count == 0)
-            return $"Renaming somebody changes their name in every gift exchange they are in, and in one of the others they take part in, somebody already goes by {name}. Participants in a gift exchange need distinct names, so please pick a different one.";
-
-        var hats = string.Join(", ", change.ConflictingHatNames);
-
-        var elsewhere = change.ConflictsElsewhere
-            ? " Somebody in another gift exchange they take part in goes by it too."
-            : string.Empty;
-
-        return $"Somebody else already goes by {name} in {hats}. Participants in a gift exchange need distinct names.{elsewhere}";
-    }
 }

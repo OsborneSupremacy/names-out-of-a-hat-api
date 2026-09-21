@@ -64,7 +64,7 @@ export function EditNameModal({ currentName, onClose, onSubmit }: EditNameModalP
           {/*
             * "take part in", not "organize". A name belongs to the person rather than to one
             * exchange, so this reaches exchanges somebody else runs and you are only a participant
-            * in — which is also why it can be refused when somebody there already goes by it.
+            * in.
             */}
           <p className="modal-note">
             This updates your name in every gift exchange you take part in, including ones somebody

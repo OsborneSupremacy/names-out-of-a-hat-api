@@ -65,9 +65,9 @@ internal class GetParticipantService : IApiGatewayHandler
     private Participant RedactPickedRecipient(Participant participant) =>
         participant with
         {
-            PickedRecipient = string.IsNullOrWhiteSpace(participant.PickedRecipient)
-                ? string.Empty
-                : Persons.Redacted.Name
+            PickedRecipient = string.IsNullOrWhiteSpace(participant.PickedRecipient.Email)
+                ? Persons.Empty
+                : Persons.Redacted
         };
 
 }

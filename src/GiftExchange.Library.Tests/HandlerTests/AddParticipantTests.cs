@@ -166,8 +166,13 @@ public class AddParticipantTests
         response.Body.Should().NotContain("exchange.", "even the scope of the refusal is a fact about it");
     }
 
+    /// <summary>
+    /// Two people in one exchange may share a name. A person is one row shared by every exchange
+    /// they are in, so refusing a second Sam here would be refusing something about somebody else's
+    /// exchanges too. The address is what tells them apart.
+    /// </summary>
     [Fact]
-    public async Task AddParticipant_SameNameAttempt_ConflictResponse()
+    public async Task AddParticipant_SameNameDifferentEmail_IsAccepted()
     {
         // arrange
         var hat = await _testDataService.CreateTestHatAsync();
@@ -192,7 +197,10 @@ public class AddParticipantTests
         var response = await _sut.FunctionHandler(requestTwo, _context);
 
         // assert
-        response.StatusCode.Should().Be((int)HttpStatusCode.Conflict);
+        response.StatusCode.Should().Be((int)HttpStatusCode.Created);
+
+        var stored = await _testDataService.GetHatAsync(hat.Organizer.Email, hat.Id);
+        stored.Participants.Where(participant => participant.Person.Name == innerRequest.Name).Should().HaveCount(2);
     }
 
     /// <summary>

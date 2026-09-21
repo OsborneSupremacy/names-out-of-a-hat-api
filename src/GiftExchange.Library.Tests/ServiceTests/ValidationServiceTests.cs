@@ -43,7 +43,7 @@ public class ValidationServiceTests
             Participants = [
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = _personFaker.Generate(),
                     EligibleRecipients = [],
                     Emoji = string.Empty,
@@ -54,7 +54,7 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = _personFaker.Generate(),
                     EligibleRecipients = [],
                     Emoji = string.Empty,
@@ -92,9 +92,9 @@ public class ValidationServiceTests
             Participants = [
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[0],
-                    EligibleRecipients = [ people[1].Name, people[2].Name ],
+                    EligibleRecipients = [ people[1], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -103,9 +103,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[1],
-                    EligibleRecipients = [ people[0].Name, people[2].Name ],
+                    EligibleRecipients = [ people[0], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -114,7 +114,7 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[2],
                     EligibleRecipients = [],
                     Emoji = string.Empty,
@@ -152,9 +152,9 @@ public class ValidationServiceTests
             Participants = [
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[0],
-                    EligibleRecipients = [ people[1].Name, people[2].Name ],
+                    EligibleRecipients = [ people[1], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -163,9 +163,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[1],
-                    EligibleRecipients = [ people[0].Name, people[2].Name ],
+                    EligibleRecipients = [ people[0], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -174,9 +174,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[2],
-                    EligibleRecipients = [ people[0].Name, people[1].Name ],
+                    EligibleRecipients = [ people[0], people[1] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -185,9 +185,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[3],
-                    EligibleRecipients = [ people[1].Name, people[2].Name ],
+                    EligibleRecipients = [ people[1], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -223,9 +223,9 @@ public class ValidationServiceTests
             Participants = [
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[0],
-                    EligibleRecipients = [ people[1].Name, people[2].Name ],
+                    EligibleRecipients = [ people[1], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -234,9 +234,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[1],
-                    EligibleRecipients = [ people[0].Name, people[3].Name ],
+                    EligibleRecipients = [ people[0], people[3] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -245,9 +245,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[2],
-                    EligibleRecipients = [ people[0].Name, people[3].Name ],
+                    EligibleRecipients = [ people[0], people[3] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -256,9 +256,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[3],
-                    EligibleRecipients = [ people[1].Name, people[2].Name ],
+                    EligibleRecipients = [ people[1], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -293,9 +293,9 @@ public class ValidationServiceTests
             Participants = [
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[0],
-                    EligibleRecipients = [ people[1].Name, people[2].Name ],
+                    EligibleRecipients = [ people[1], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -304,9 +304,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[1],
-                    EligibleRecipients = [ people[0].Name, people[3].Name ],
+                    EligibleRecipients = [ people[0], people[3] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -315,9 +315,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[2],
-                    EligibleRecipients = [ people[0].Name, people[1].Name ],
+                    EligibleRecipients = [ people[0], people[1] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,
@@ -326,9 +326,9 @@ public class ValidationServiceTests
                 },
                 new Participant
                 {
-                    PickedRecipient = string.Empty,
+                    PickedRecipient = Persons.Empty,
                     Person = people[3],
-                    EligibleRecipients = [ people[0].Name, people[2].Name ],
+                    EligibleRecipients = [ people[0], people[2] ],
                     Emoji = string.Empty,
                     DeliveryStatus = DeliveryStatus.Unknown,
                     DeliveryDetail = string.Empty,

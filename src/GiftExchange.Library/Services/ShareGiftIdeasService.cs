@@ -291,11 +291,11 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         var (subject, body) = route.IsContribution switch
         {
             true => (
-                GiftIdeaEmailCompositionService.ContributionForwardSubject(route.Sender.Name, route.Subject.Name),
-                _composer.ComposeContributionForward(route.Sender.Name, route.Subject.Name, route.HatName, ideas)),
+                GiftIdeaEmailCompositionService.ContributionForwardSubject(route.DisplayNameOf(route.Sender), route.DisplayNameOf(route.Subject)),
+                _composer.ComposeContributionForward(route.DisplayNameOf(route.Sender), route.DisplayNameOf(route.Subject), route.HatName, ideas)),
             false => (
-                GiftIdeaEmailCompositionService.ForwardSubject(route.Sender.Name),
-                _composer.ComposeForward(route.Sender.Name, route.HatName, ideas))
+                GiftIdeaEmailCompositionService.ForwardSubject(route.DisplayNameOf(route.Sender)),
+                _composer.ComposeForward(route.DisplayNameOf(route.Sender), route.HatName, ideas))
         };
 
         return _sender.SendAsync(route.Giver.Email, subject, body);

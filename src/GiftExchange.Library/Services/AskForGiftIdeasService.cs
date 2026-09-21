@@ -127,7 +127,7 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
             ? await SendAsksAsync(request, route, token, candidates).ConfigureAwait(false)
             : Page(_pageComposer.ComposeChoose(new ComposeChooseRequest
             {
-                SubjectName = route.SenderPickedRecipient.Name,
+                SubjectName = route.DisplayNameOf(route.SenderPickedRecipient),
                 Candidates = candidates,
                 AskToken = token,
                 Notice = string.Empty,
@@ -143,7 +143,7 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
         ImmutableList<AskCandidate> candidates
     )
     {
-        var subjectName = route.SenderPickedRecipient.Name;
+        var subjectName = route.DisplayNameOf(route.SenderPickedRecipient);
         var submission = ReadSubmission(request);
 
         // Resolved against the database rather than against the list just rendered. The form came
@@ -257,9 +257,9 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
 
         await _sender.SendAsync(
                 route.Sender.Email,
-                GiftIdeaEmailCompositionService.ForwardSubject(route.SenderPickedRecipient.Name),
+                GiftIdeaEmailCompositionService.ForwardSubject(route.DisplayNameOf(route.SenderPickedRecipient)),
                 _composer.ComposeHeldForward(
-                    route.SenderPickedRecipient.Name, route.HatName, latest.Ideas))
+                    route.DisplayNameOf(route.SenderPickedRecipient), route.HatName, latest.Ideas))
             .ConfigureAwait(false);
 
         // After the send, so that a message that never went out is tried again by the next ask.
@@ -300,12 +300,12 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
         {
             _logger.LogInformation("Suppressed an Ask inside the throttle window.");
 
-            return Refused(target, slot.PreviouslyReservedAt);
+            return Refused(route.DisplayNameOf(target.Person), slot.PreviouslyReservedAt);
         }
 
         await SendAskAsync(route, target, question).ConfigureAwait(false);
 
-        return Sent(target);
+        return Sent(route.DisplayNameOf(target.Person));
     }
 
     /// <summary>
@@ -368,11 +368,11 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
 
         await _sender.SendAsync(
                 target.Person.Email,
-                GiftIdeaEmailCompositionService.ContributionAskSubject(route.SenderPickedRecipient.Name),
+                GiftIdeaEmailCompositionService.ContributionAskSubject(route.DisplayNameOf(route.SenderPickedRecipient)),
                 _composer.ComposeContributionAsk(new ComposeContributionAskRequest
                 {
                     HatName = route.HatName,
-                    SubjectName = route.SenderPickedRecipient.Name,
+                    SubjectName = route.DisplayNameOf(route.SenderPickedRecipient),
                     AskToken = askToken,
                     Question = question
                 }))
@@ -385,19 +385,19 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
     /// the way", which is a different fact from a date nobody recorded — and the callers reporting
     /// this never read the date off a sent attempt anyway.
     /// </remarks>
-    private static AskAttempt Sent(AskTarget target) =>
+    private static AskAttempt Sent(string name) =>
         new()
         {
-            Name = target.Person.Name,
+            Name = name,
             Sent = true,
             PreviouslyAskedAt = DateTimeOffset.MinValue
         };
 
     /// <summary>An ask the throttle refused, with the date it is refusing on behalf of.</summary>
-    private static AskAttempt Refused(AskTarget target, DateTimeOffset previouslyAskedAt) =>
+    private static AskAttempt Refused(string name, DateTimeOffset previouslyAskedAt) =>
         new()
         {
-            Name = target.Person.Name,
+            Name = name,
             Sent = false,
             PreviouslyAskedAt = previouslyAskedAt
         };

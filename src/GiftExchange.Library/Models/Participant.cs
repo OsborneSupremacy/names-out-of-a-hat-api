@@ -2,11 +2,22 @@
 
 public record Participant
 {
-    public required string PickedRecipient { get; init; }
+    /// <summary>
+    /// Who this participant drew, or <see cref="Persons.Empty"/> when they have not drawn anybody.
+    /// </summary>
+    /// <remarks>
+    /// A person rather than a name, because names are not unique within an exchange — two people
+    /// called Sam are two people. The address is what identifies them; the name is what is shown.
+    /// </remarks>
+    public required Person PickedRecipient { get; init; }
 
     public required Person Person { get; init; }
 
-    public required ImmutableList<string> EligibleRecipients { get; init; }
+    /// <summary>
+    /// Who this participant may draw. People rather than names, for the reason
+    /// <see cref="PickedRecipient"/> is one.
+    /// </summary>
+    public required ImmutableList<Person> EligibleRecipients { get; init; }
 
     /// <summary>
     /// The face this participant is marked with wherever they are named — one of
@@ -75,7 +86,7 @@ internal static class Participants
     public static Participant Empty => new()
     {
         Person = Persons.Empty,
-        PickedRecipient = string.Empty,
+        PickedRecipient = Persons.Empty,
         EligibleRecipients = [],
         Emoji = string.Empty,
         DeliveryStatus = Models.DeliveryStatus.Unknown,
