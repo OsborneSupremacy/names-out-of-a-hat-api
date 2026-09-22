@@ -431,7 +431,8 @@ public class EditParticipantNameTests
             PriceRange = data.PriceRange,
             Organizer = new Person { Email = data.OrganizerEmail, Name = data.OrganizerName },
             Participants = [],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
     }
 }

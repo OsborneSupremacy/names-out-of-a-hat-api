@@ -28,5 +28,12 @@ public class EditHatRequestValidator : AbstractValidator<EditHatRequest>
             .Matches(@"^[\p{L}\p{N}\s\-$€£¥.,/]+$")
             .When(x => !string.IsNullOrEmpty(x.PriceRange))
             .WithMessage("'Price Range' must only contain letters, numbers, spaces, currency symbols, and common punctuation.");
+
+        // Only the far bound is checked here. Whether a date is too early depends on what was
+        // stored before -- a date that has passed is fine to keep, and wrong to set -- so that
+        // check belongs to EditHatService, which has the hat in hand.
+        RuleFor(x => x.ExchangeDate)
+            .Must(date => date == DateOnly.MinValue || date <= ExchangeDates.Latest(DateTimeOffset.UtcNow))
+            .WithMessage("'Exchange Date' must be within the next two years.");
     }
 }

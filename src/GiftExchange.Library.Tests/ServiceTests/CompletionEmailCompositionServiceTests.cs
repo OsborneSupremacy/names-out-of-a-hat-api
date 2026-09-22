@@ -153,7 +153,8 @@ public class CompletionEmailCompositionServiceTests
                 ParticipantFor("Bob", "bob@example.com", "Charlie"),
                 ParticipantFor("Charlie", "charlie@example.com", "Alice")
             ],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
 
     /// <summary>

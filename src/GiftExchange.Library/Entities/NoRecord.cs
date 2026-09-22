@@ -49,7 +49,9 @@ public static class NoRecord
             InvitationsQueuedAt = DateTimeOffset.MinValue,
             InvitationsSentFromIp = string.Empty,
             CreatedAt = DateTimeOffset.MinValue,
-            CopiedFromHatId = Guid.Empty
+            CopiedFromHatId = Guid.Empty,
+            ExchangeDate = DateOnly.MinValue,
+            ClosePromptSentAt = DateTimeOffset.MinValue
         };
 
     /// <summary>

@@ -38,6 +38,8 @@ export interface EditHatRequest {
   name: string
   additionalInformation: string
   priceRange: string
+  /** yyyy-MM-dd, or 0001-01-01 for none. See exchangeDate.ts. */
+  exchangeDate: string
 }
 
 export interface AddParticipantRequest {
@@ -217,6 +219,8 @@ export interface ExportedHat {
   invitationsQueuedAt: string
   /** The exchange this one was copied from, or the all-zero uuid when it was not a copy. */
   copiedFromHatId: string
+  /** yyyy-MM-dd, or 0001-01-01 when no date was given. */
+  exchangeDate: string
   organizer: ExportedPerson
   participants: ExportedParticipant[]
 }
@@ -288,6 +292,8 @@ export interface Hat {
   }
   participants: Participant[]
   status: string
+  /** yyyy-MM-dd, or 0001-01-01 when the organizer has not given one. See exchangeDate.ts. */
+  exchangeDate: string
 }
 
 async function getAuthHeaders() {

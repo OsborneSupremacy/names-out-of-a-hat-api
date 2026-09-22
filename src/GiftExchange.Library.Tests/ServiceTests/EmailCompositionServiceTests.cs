@@ -5,6 +5,31 @@ public class EmailCompositionServiceTests
     private readonly EmailCompositionService _sut = new();
 
     [Fact]
+    public void ComposeEmail_GivesTheExchangeDate_AsApproximate()
+    {
+        // arrange
+        var hat = HatFor("Ben", "ben@example.com", "Family Christmas") with { ExchangeDate = new DateOnly(2026, 12, 25) };
+
+        // act
+        var body = _sut.ComposeEmail(Invitation(hat));
+
+        // assert: after the name, since how long they have is the next thing anybody wants to know.
+        body.Should().Contain("The gift exchange is planned for around Friday, December 25, 2026.");
+        body.IndexOf("December 25", StringComparison.Ordinal)
+            .Should().BeGreaterThan(body.IndexOf("Charlie", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ComposeEmail_SaysNothingAboutADate_WhenThereIsNone()
+    {
+        // act
+        var body = _sut.ComposeEmail(Invitation());
+
+        // assert
+        body.Should().NotContain("planned for");
+    }
+
+    [Fact]
     public void ComposeEmail_NamesTheOrganizersAddressAlongsideTheirName()
     {
         // act
@@ -320,6 +345,7 @@ public class EmailCompositionServiceTests
             PriceRange = string.Empty,
             Organizer = new Person { Name = organizerName, Email = organizerEmail },
             Participants = [],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
 }

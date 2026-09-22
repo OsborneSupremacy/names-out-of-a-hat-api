@@ -126,6 +126,7 @@ public class LeaveEmailCompositionServiceTests
             PriceRange = string.Empty,
             Organizer = new Person { Name = "Ben", Email = "ben@example.com" },
             Participants = [],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
 }

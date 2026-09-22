@@ -63,6 +63,12 @@ public record ExportedHat
     /// </summary>
     public required Guid CopiedFromHatId { get; init; }
 
+    /// <summary>
+    /// The approximate day of the exchange, or <see cref="DateOnly.MinValue"/> when the organizer
+    /// did not give one.
+    /// </summary>
+    public required DateOnly ExchangeDate { get; init; }
+
     public required ExportedPerson Organizer { get; init; }
 
     public required ImmutableList<ExportedParticipant> Participants { get; init; }

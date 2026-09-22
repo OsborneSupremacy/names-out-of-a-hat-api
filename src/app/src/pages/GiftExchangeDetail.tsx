@@ -23,6 +23,13 @@ import {
   PreviewInvitationsResponse,
 } from '../api'
 import { HAT_STATUS_STEPS, formatHatStatus } from '../hatStatus'
+import {
+  formatExchangeDate,
+  fromDateInputValue,
+  hasExchangeDate,
+  toDateInputValue,
+  todayAsDateInputValue,
+} from '../exchangeDate'
 import { DrawType } from '../drawType'
 import {
   deliveryTone,
@@ -67,6 +74,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
   const [editedName, setEditedName] = useState('')
   const [editedAdditionalInfo, setEditedAdditionalInfo] = useState('')
   const [editedPriceRange, setEditedPriceRange] = useState('')
+  const [editedExchangeDate, setEditedExchangeDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
   const [removingParticipant, setRemovingParticipant] = useState<string | null>(null)
@@ -140,6 +148,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
         setEditedName(hatData.name)
         setEditedAdditionalInfo(hatData.additionalInformation)
         setEditedPriceRange(hatData.priceRange)
+        setEditedExchangeDate(toDateInputValue(hatData.exchangeDate))
 
         if (
           hatData.participants.length <= 1 &&
@@ -181,6 +190,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
       setEditedName(hat.name)
       setEditedAdditionalInfo(hat.additionalInformation)
       setEditedPriceRange(hat.priceRange)
+      setEditedExchangeDate(toDateInputValue(hat.exchangeDate))
     }
     setIsEditing(false)
   }
@@ -196,6 +206,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
         name: editedName,
         additionalInformation: editedAdditionalInfo,
         priceRange: editedPriceRange,
+        exchangeDate: fromDateInputValue(editedExchangeDate),
       })
 
       // Reload the hat data
@@ -834,6 +845,34 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                     />
                   ) : (
                     <p>{hat.priceRange || <span className="text-muted">Not set</span>}</p>
+                  )}
+                </div>
+
+                <div className="info-card">
+                  <h3>Exchange Date</h3>
+                  {isEditing ? (
+                    <>
+                      <input
+                        type="date"
+                        className="edit-input"
+                        aria-label="Exchange date"
+                        value={editedExchangeDate}
+                        min={todayAsDateInputValue()}
+                        onChange={(e) => setEditedExchangeDate(e.target.value)}
+                        disabled={saving}
+                      />
+                      <p className="text-muted exchange-date-hint">
+                        Optional, and approximate is fine. It goes in the invitations, and a week after it we'll
+                        remind you to reveal the picked names. Gift exchanges with a date are deleted 18 months
+                        after it.
+                      </p>
+                    </>
+                  ) : (
+                    <p>
+                      {hasExchangeDate(hat.exchangeDate)
+                        ? `Around ${formatExchangeDate(hat.exchangeDate)}`
+                        : <span className="text-muted">Not set</span>}
+                    </p>
                   )}
                 </div>
               </div>

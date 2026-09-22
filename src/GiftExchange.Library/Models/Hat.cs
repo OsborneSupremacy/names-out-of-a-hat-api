@@ -17,6 +17,12 @@ public record Hat
     public required ImmutableList<Participant> Participants { get; init; }
 
     public required DateTimeOffset InvitationsQueuedDate { get; init; }
+
+    /// <summary>
+    /// The approximate day the exchange happens, or <see cref="DateOnly.MinValue"/> when the
+    /// organizer has not given one.
+    /// </summary>
+    public required DateOnly ExchangeDate { get; init; }
 }
 
 internal static class Hats
@@ -30,7 +36,8 @@ internal static class Hats
         PriceRange = string.Empty,
         Organizer = Persons.Empty,
         Participants = [],
-        InvitationsQueuedDate = DateTimeOffset.MinValue
+        InvitationsQueuedDate = DateTimeOffset.MinValue,
+        ExchangeDate = DateOnly.MinValue
     };
 
     /// <summary>

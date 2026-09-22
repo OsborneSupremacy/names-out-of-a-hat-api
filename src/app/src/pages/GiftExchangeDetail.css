@@ -414,6 +414,10 @@
   font-size: 0.875rem;
 }
 
+.exchange-date-hint {
+  margin-top: 0.5rem !important;
+}
+
 .participants-section {
   margin-top: 2rem;
 }

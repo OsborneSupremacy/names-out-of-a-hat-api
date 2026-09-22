@@ -120,7 +120,8 @@ export function TermsModal({ onClose }: TermsModalProps) {
           <h3>7. Ending it</h3>
           <p>
             You can stop using the Service at any time and delete your gift exchanges from within
-            the application. We may suspend or remove an account that breaks these terms, and we
+            the application. A gift exchange you give a date for is deleted automatically 18
+            months after that date. We may suspend or remove an account that breaks these terms, and we
             may discontinue the Service entirely. If we discontinue it, we will try to give
             reasonable notice, but we may not always be able to.
           </p>

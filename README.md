@@ -54,7 +54,7 @@ And you don't have to go and look. A couple of hours after invitations go out, a
 
 ### The details travel with the assignment
 
-The price range and any additional instructions are in every invitation, so nobody has to remember the number somebody said out loud in November.
+The price range, any additional instructions, and roughly when the exchange is happening are in every invitation, so nobody has to remember the number somebody said out loud in November.
 
 ### Next year is one click
 
@@ -62,7 +62,7 @@ A finished exchange can be copied into a new one with the same people and the sa
 
 ### It ends with a record
 
-When the organizer closes the exchange, everyone receives the full list of who drew whom.
+When the organizer closes the exchange, everyone receives the full list of who drew whom. If they've given a date and forget, they're emailed once, a week after it, to ask whether it's happened.
 
 ## The lifecycle of an exchange
 
@@ -114,6 +114,18 @@ The setting belongs to the draw, not to the exchange, so it isn't stored. Once n
 ### Cool-off before closing
 
 Closing reveals every pick, permanently, to everybody. It's the only irreversible action in the application, so it isn't available immediately — an exchange has to sit in `INVITATIONS_SENT` for a while before it can be closed, which is enough to stop a mis-click from spoiling everyone's surprise. The transition is made by a scheduled job, not by a timestamp check on read, so the state is a real one rather than a computed one.
+
+### The exchange date is approximate, and runs a daily sweep
+
+An organizer can say roughly when the exchange will happen. It goes in the invitations, and two things are measured from it: a week later the organizer is asked once to close the exchange, and eighteen months later the exchange is deleted, closed or not. An exchange with no date is never prompted and never deleted, because nobody was told it would be.
+
+The prompt asks rather than closes. Closing reveals every pick and can't be undone, and the organizer called the date approximate, so a party that slipped a week would be spoiled by an automatic close. Eighteen months is set by copying: next year's exchange is made from this one, which has to still exist, so anything much shorter would break the feature that makes the second year easy.
+
+The date has no time zone, so "has it passed" is answered for the last place on Earth to reach it, UTC-12. That's up to a day late for most people, which doesn't matter for anything counted in weeks.
+
+Both jobs run from one daily schedule rather than a schedule per exchange. The cool-off and the delivery check are fixed offsets from the send, which never moves; this is measured from a date the organizer can edit, and a per-exchange schedule would have to be found and moved every time it changed. A prompt is claimed before it's sent, so a retried sweep can't send it twice, and moving the date clears the claim so the new date gets a prompt of its own.
+
+Ideas that build on the date and aren't built yet, reminders among them, are in [docs/ideas.md](docs/ideas.md).
 
 ### Sign-in is a magic link, and redemption sits behind a button
 
@@ -248,7 +260,7 @@ Free-text fields go through Amazon Comprehend's toxicity detection. If the check
 - **Database** — Aurora DSQL (Postgres) via EF Core, connecting as a non-admin role with IAM auth. Migrations run as admin from their own workflow; the application role can't.
 - **Ephemeral state** — DynamoDB with TTL, for magic-link tokens and throttle windows.
 - **Email** — SES for sending, SQS for fan-out and for delivery events, SNS in between.
-- **Async work** — EventBridge Scheduler for the cool-off transition and the delivery check that follows a send, SQS-triggered Lambdas for invitations and delivery events.
+- **Async work** — EventBridge Scheduler for the cool-off transition, the delivery check that follows a send, and a daily sweep over exchange dates; SQS-triggered Lambdas for invitations and delivery events.
 - **Infrastructure** — Terraform, in two independent roots. See below.
 
 ### Repository layout

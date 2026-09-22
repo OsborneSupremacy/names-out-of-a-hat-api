@@ -15,4 +15,7 @@ public record HatDataModel
     public required string AdditionalInformation { get; init; }
 
     public required string PriceRange { get; init; }
+
+    /// <summary><see cref="DateOnly.MinValue"/> when the organizer has not given one.</summary>
+    public required DateOnly ExchangeDate { get; init; }
 }

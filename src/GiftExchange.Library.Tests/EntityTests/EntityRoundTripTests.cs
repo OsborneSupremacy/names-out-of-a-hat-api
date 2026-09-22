@@ -68,7 +68,9 @@ public class EntityRoundTripTests : IDisposable
                 InvitationsQueuedAt = DateTimeOffset.MinValue,
                 InvitationsSentFromIp = string.Empty,
                 CreatedAt = DateTimeOffset.UtcNow,
-                CopiedFromHatId = Guid.Empty
+                CopiedFromHatId = Guid.Empty,
+                ExchangeDate = new DateOnly(2026, 12, 25),
+                ClosePromptSentAt = DateTimeOffset.MinValue
             });
 
             context.Participants.AddRange(
@@ -113,6 +115,8 @@ public class EntityRoundTripTests : IDisposable
             // Nothing is null, so "not queued" is a value like any other.
             hat.InvitationsQueuedAt.Should().Be(DateTimeOffset.MinValue);
             hat.InvitationsSentFromIp.Should().BeEmpty();
+            hat.ExchangeDate.Should().Be(new DateOnly(2026, 12, 25));
+            hat.ClosePromptSentAt.Should().Be(DateTimeOffset.MinValue);
             hat.Participants.Should().HaveCount(2);
             hat.Participants
                 .Single(p => p.ParticipantId == organizerParticipantId)
@@ -319,7 +323,9 @@ public class EntityRoundTripTests : IDisposable
             InvitationsQueuedAt = DateTimeOffset.MinValue,
             InvitationsSentFromIp = string.Empty,
             CreatedAt = DateTimeOffset.UtcNow,
-            CopiedFromHatId = Guid.Empty
+            CopiedFromHatId = Guid.Empty,
+            ExchangeDate = DateOnly.MinValue,
+            ClosePromptSentAt = DateTimeOffset.MinValue
         };
 
     public void Dispose() => _connection.Dispose();

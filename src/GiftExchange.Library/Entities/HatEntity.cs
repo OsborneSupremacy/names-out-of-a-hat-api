@@ -81,6 +81,30 @@ public class HatEntity
     /// </remarks>
     public required Guid CopiedFromHatId { get; set; }
 
+    /// <summary>
+    /// The approximate day the organizer expects the exchange to happen, or
+    /// <see cref="DateOnly.MinValue"/> when they have not said. Approximate is the organizer's word
+    /// and the application's too: nothing here treats it as a deadline. It is shown in the
+    /// invitation, and it decides when the organizer is prompted to close and when the exchange is
+    /// deleted, both of which are measured in weeks and months past it.
+    /// </summary>
+    /// <remarks>
+    /// Non-nullable here and nullable in the database, for the reason <see cref="CopiedFromHatId"/>
+    /// gives. hat--0009 filled in the rows that existed.
+    /// </remarks>
+    public required DateOnly ExchangeDate { get; set; }
+
+    /// <summary>
+    /// When the organizer was emailed asking them to close this exchange, or
+    /// <see cref="DateTimeOffset.MinValue"/> until they have been. Cleared whenever
+    /// <see cref="ExchangeDate"/> changes, so that a moved date earns a prompt of its own.
+    /// </summary>
+    /// <remarks>
+    /// Non-nullable here and nullable in the database, for the reason <see cref="CopiedFromHatId"/>
+    /// gives. hat--0009 filled in the rows that existed.
+    /// </remarks>
+    public required DateTimeOffset ClosePromptSentAt { get; set; }
+
     public PersonEntity Organizer { get; set; } = null!;
 
     public ICollection<ParticipantEntity> Participants { get; set; } = [];

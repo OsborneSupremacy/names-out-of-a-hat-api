@@ -28,6 +28,7 @@ namespace GiftExchange.Library.Contexts;
 [JsonSerializable(typeof(EditParticipantNameRequest))]
 [JsonSerializable(typeof(EditParticipantAddressResponse))]
 [JsonSerializable(typeof(ErrorResponse))]
+[JsonSerializable(typeof(ExchangeDateSweepRequest))]
 [JsonSerializable(typeof(ExportHatRequest))]
 [JsonSerializable(typeof(ExportHatResponse))]
 [JsonSerializable(typeof(GetHatRequest))]

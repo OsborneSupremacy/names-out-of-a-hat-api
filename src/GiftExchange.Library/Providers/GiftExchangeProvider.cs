@@ -140,7 +140,9 @@ public class GiftExchangeProvider
             InvitationsQueuedAt = DateTimeOffset.MinValue,
             InvitationsSentFromIp = string.Empty,
             CreatedAt = createdAt,
-            CopiedFromHatId = Guid.Empty
+            CopiedFromHatId = Guid.Empty,
+            ExchangeDate = hatDataModel.ExchangeDate,
+            ClosePromptSentAt = DateTimeOffset.MinValue
         });
 
         try
@@ -230,7 +232,9 @@ public class GiftExchangeProvider
                     CreatedAt = copiedAt,
                     // Copying a copy records the hat it came from, not the one at the head of the
                     // chain, so the chain stays walkable one link at a time.
-                    CopiedFromHatId = sourceHatId
+                    CopiedFromHatId = sourceHatId,
+                    ExchangeDate = newHat.ExchangeDate,
+                    ClosePromptSentAt = DateTimeOffset.MinValue
                 });
 
                 var newParticipantIds = carriedOver
@@ -420,7 +424,8 @@ public class GiftExchangeProvider
             PriceRange = hat.PriceRange,
             Organizer = new Person { Name = hat.Organizer.Name, Email = hat.Organizer.Email },
             Participants = ToDomain(hat.Participants, deliveries),
-            InvitationsQueuedDate = hat.InvitationsQueuedAt
+            InvitationsQueuedDate = hat.InvitationsQueuedAt,
+            ExchangeDate = hat.ExchangeDate
         });
     }
 
@@ -514,6 +519,7 @@ public class GiftExchangeProvider
                 CreatedAt = hat.CreatedAt,
                 InvitationsQueuedAt = hat.InvitationsQueuedAt,
                 CopiedFromHatId = hat.CopiedFromHatId,
+                ExchangeDate = hat.ExchangeDate,
                 Organizer = ToExported(hat.Organizer),
                 // Ordered so that two exports of an unchanged exchange are the same document. The
                 // row order a query happens to return is not something to hand somebody diffing
@@ -598,7 +604,13 @@ public class GiftExchangeProvider
                 .SetProperty(hat => hat.Name, request.Name)
                 .SetProperty(hat => hat.NameNormalized, Normalize(request.Name))
                 .SetProperty(hat => hat.AdditionalInformation, request.AdditionalInformation)
-                .SetProperty(hat => hat.PriceRange, request.PriceRange))
+                .SetProperty(hat => hat.PriceRange, request.PriceRange)
+                // A moved date is a new date, and earns a close prompt of its own. Left alone when
+                // the date is the same, so saving an unrelated change cannot send the prompt twice.
+                .SetProperty(
+                    hat => hat.ClosePromptSentAt,
+                    hat => hat.ExchangeDate == request.ExchangeDate ? hat.ClosePromptSentAt : DateTimeOffset.MinValue)
+                .SetProperty(hat => hat.ExchangeDate, request.ExchangeDate))
             .ConfigureAwait(false);
     }
 
@@ -3166,6 +3178,141 @@ public class GiftExchangeProvider
 
         if (updated == 0)
             _logger.LogError("Couldn't update HatStatus to READY_TO_CLOSE for hat {hatId}, since it does not have expected status. Will not retry.", hatId);
+    }
+
+    /// <summary>
+    /// The exchanges whose date is far enough behind them that the organizer should be asked to
+    /// close, and who has not been asked yet.
+    /// </summary>
+    /// <remarks>
+    /// Only exchanges whose invitations are out and that are not closed. One still being set up
+    /// has nothing to close, and asking would be confusing; one already closed needs nothing.
+    ///
+    /// Across every organizer, which no other read here is. It is the daily sweep's, and returns
+    /// each organizer's address so that everything it does next goes back through the ordinary
+    /// organizer-scoped reads and writes.
+    /// </remarks>
+    internal async Task<ImmutableList<ExchangeDateSweepCandidate>> ListHatsDueClosePromptAsync(DateOnly cutoff)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var dueStatuses = new[] { HatStatus.InvitationsSent, HatStatus.CooledOff };
+
+        var candidates = await context.Hats
+            .AsNoTracking()
+            .Where(hat => hat.ExchangeDate > DateOnly.MinValue
+                          && hat.ExchangeDate < cutoff
+                          && hat.ClosePromptSentAt == DateTimeOffset.MinValue
+                          && dueStatuses.Contains(hat.Status))
+            .Select(hat => new ExchangeDateSweepCandidate { HatId = hat.HatId, OrganizerEmail = hat.Organizer.Email })
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return [.. candidates];
+    }
+
+    /// <summary>
+    /// Claims the close prompt for one exchange, so that it is sent at most once.
+    /// </summary>
+    /// <remarks>
+    /// Claimed before sending rather than recorded after. If the send then fails, the organizer is
+    /// not prompted, which costs nothing: the page still has its Close button. The other order
+    /// would let a retried sweep prompt them twice.
+    /// </remarks>
+    /// <returns>Whether this call made the claim. False if something else already had.</returns>
+    internal async Task<bool> TryClaimClosePromptAsync(Guid hatId, DateTimeOffset sentAt)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var updated = await context.Hats
+            .Where(hat => hat.HatId == hatId && hat.ClosePromptSentAt == DateTimeOffset.MinValue)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(hat => hat.ClosePromptSentAt, sentAt))
+            .ConfigureAwait(false);
+
+        return updated == 1;
+    }
+
+    /// <summary>
+    /// The exchanges whose date is far enough behind them to be deleted, in any status.
+    /// </summary>
+    /// <remarks>
+    /// Across every organizer, like <see cref="ListHatsDueClosePromptAsync"/>. An exchange with no
+    /// date is never returned: nobody was told it would be deleted, so it is not.
+    /// </remarks>
+    internal async Task<ImmutableList<Guid>> ListHatsDuePurgeAsync(DateOnly cutoff)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var hatIds = await context.Hats
+            .AsNoTracking()
+            .Where(hat => hat.HatId != Guid.Empty
+                          && hat.ExchangeDate > DateOnly.MinValue
+                          && hat.ExchangeDate < cutoff)
+            .Select(hat => hat.HatId)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return [.. hatIds];
+    }
+
+    /// <summary>
+    /// Deletes one exchange whose date is past the retention window, along with the people who
+    /// were only ever in it.
+    /// </summary>
+    /// <remarks>
+    /// The same removal <see cref="DeleteMyDataAsync"/> makes of each exchange, in a transaction of
+    /// its own for the same reason: DSQL caps the rows one transaction may modify. The organizer is
+    /// kept even if this was their only exchange. They have signed in, and taking their name away
+    /// would greet them as a stranger next time.
+    ///
+    /// The date is checked again inside the transaction rather than trusted from the list. It
+    /// cannot move once invitations are out, but an exchange that never got that far can have its
+    /// date edited in the meantime, and a delete is not the place to act on a stale read.
+    /// </remarks>
+    /// <returns>Whether the exchange was deleted.</returns>
+    internal async Task<bool> PurgeHatAsync(Guid hatId, DateOnly cutoff)
+    {
+        if (hatId == Guid.Empty)
+            return false;
+
+        var purged = false;
+
+        await InTransactionAsync(async context =>
+        {
+            purged = false;
+
+            var hat = await context.Hats
+                .AsNoTracking()
+                .Where(entity => entity.HatId == hatId
+                                 && entity.ExchangeDate > DateOnly.MinValue
+                                 && entity.ExchangeDate < cutoff)
+                .Select(entity => new { entity.OrganizerPersonId })
+                .SingleOrDefaultAsync()
+                .ConfigureAwait(false);
+
+            if (hat is null)
+                return;
+
+            // Read before the exchange goes, because afterwards nothing says who was in it.
+            var personIds = await context.Participants
+                .AsNoTracking()
+                .Where(participant => participant.HatId == hatId)
+                .Select(participant => participant.PersonId)
+                .Distinct()
+                .ToListAsync()
+                .ConfigureAwait(false);
+
+            await DeleteHatCoreAsync(context, hatId).ConfigureAwait(false);
+
+            await DeleteUnreferencedPersonsAsync(
+                    context,
+                    [.. personIds.Where(id => id != hat.OrganizerPersonId)])
+                .ConfigureAwait(false);
+
+            purged = true;
+        }).ConfigureAwait(false);
+
+        return purged;
     }
 
     /// <summary>

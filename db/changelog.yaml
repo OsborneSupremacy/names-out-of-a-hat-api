@@ -1391,3 +1391,89 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: REVOKE SELECT, INSERT ON organizer_complaint FROM giftexchange_user
+
+  # The exchange date, and the record that the organizer has been prompted to close. Both are
+  # added to a table that already holds rows, so both stay nullable -- see the note on hat--0003.
+  - changeSet:
+      id: hat--0007
+      author: ben
+      comment: >
+        The approximate date the organizer expects the exchange to happen on, or the minimum date
+        when they have not given one. A date rather than a timestamp: it is a day on a calendar in
+        somebody's home, and the application only ever asks whether it has passed by some margin
+        measured in days.
+
+        Stays nullable, for the reasons hat--0003 gives. hat--0009 fills in the rows that existed;
+        HatEntity.ExchangeDate being non-nullable is what keeps every row written after that filled.
+      changes:
+        - sql:
+            sql: ALTER TABLE hat ADD COLUMN exchange_date DATE
+      rollback:
+        - sql:
+            sql: ALTER TABLE hat DROP COLUMN exchange_date
+
+  - changeSet:
+      id: hat--0008
+      author: ben
+      comment: >
+        When the organizer was emailed asking them to close the exchange, or the minimum timestamp
+        until they have been. The daily sweep sends that email once, and this is how it knows it
+        already has. Cleared again when the date moves, so a later date earns a prompt of its own.
+
+        Stays nullable, for the reasons hat--0003 gives. hat--0009 fills in the rows that existed.
+      changes:
+        - sql:
+            sql: ALTER TABLE hat ADD COLUMN close_prompt_sent_at TIMESTAMPTZ
+      rollback:
+        - sql:
+            sql: ALTER TABLE hat DROP COLUMN close_prompt_sent_at
+
+  - changeSet:
+      id: hat--0009
+      author: ben
+      comment: >
+        No existing exchange has a date or has been prompted, the sentinel included. Written as
+        -infinity because that is what Npgsql writes for DateOnly.MinValue and
+        DateTimeOffset.MinValue, so these rows read back exactly as rows the application writes.
+
+        Unconditional on purpose: both columns were only just added, so no row has either set. One
+        statement per column, so each reads as the backfill of the column it names.
+      changes:
+        - sql:
+            sql: UPDATE hat SET exchange_date = '-infinity'::DATE
+        - sql:
+            sql: UPDATE hat SET close_prompt_sent_at = '-infinity'::TIMESTAMPTZ
+      rollback:
+        - sql:
+            sql: UPDATE hat SET exchange_date = NULL, close_prompt_sent_at = NULL
+
+  - changeSet:
+      id: giftexchange_user--0018
+      author: ben
+      comment: >
+        Lets the exchange date sweep function connect as giftexchange_user. It needs nothing the
+        role cannot already do: it reads hats, updates one column on them, and deletes exchanges
+        the same way deleting one's own data does.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0018.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: AWS IAM REVOKE giftexchange_user FROM '${exchange_date_sweep_role_arn}'
+
+  - changeSet:
+      id: giftexchange_user--0019
+      author: ben
+      comment: >
+        Lets the undeliverable-invitations function connect as giftexchange_user, which it never
+        could. See the file.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0019.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: AWS IAM REVOKE giftexchange_user FROM '${undeliverable_invitations_role_arn}'

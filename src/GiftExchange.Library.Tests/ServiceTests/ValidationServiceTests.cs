@@ -64,7 +64,8 @@ public class ValidationServiceTests
                     DeliveryOccurredAt = DateTimeOffset.MinValue
                 }
             ],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
 
         // act
@@ -124,7 +125,8 @@ public class ValidationServiceTests
                     DeliveryOccurredAt = DateTimeOffset.MinValue
                 }
             ],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
 
         // act
@@ -195,7 +197,8 @@ public class ValidationServiceTests
                     DeliveryOccurredAt = DateTimeOffset.MinValue
                 }
             ],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
 
         // act
@@ -266,7 +269,8 @@ public class ValidationServiceTests
                     DeliveryOccurredAt = DateTimeOffset.MinValue
                 }
             ],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
 
         // act
@@ -336,7 +340,8 @@ public class ValidationServiceTests
                     DeliveryOccurredAt = DateTimeOffset.MinValue
                 }
             ],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
 
         // act

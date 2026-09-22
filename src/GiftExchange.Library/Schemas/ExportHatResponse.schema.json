@@ -66,6 +66,11 @@
                     "format": "uuid",
                     "description": "The gift exchange this one was copied from, or the all-zero uuid when it was not a copy"
                 },
+                "exchangeDate": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "description": "The approximate day of the exchange, as yyyy-MM-dd, or 0001-01-01 when the organizer did not give one"
+                },
                 "organizer": {
                     "$ref": "#/definitions/exportedperson",
                     "description": "The organizer of the gift exchange"
@@ -87,6 +92,7 @@
                 "createdAt",
                 "invitationsQueuedAt",
                 "copiedFromHatId",
+                "exchangeDate",
                 "organizer",
                 "participants"
             ],

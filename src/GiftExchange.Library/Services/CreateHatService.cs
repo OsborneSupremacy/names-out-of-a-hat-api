@@ -71,6 +71,9 @@ internal class CreateHatService : IApiGatewayHandler
             Status = HatStatus.InProgress,
             AdditionalInformation = string.Empty,
             PriceRange = string.Empty,
+            // Given later, alongside the price range, like everything else about the exchange
+            // beyond its name.
+            ExchangeDate = DateOnly.MinValue,
             OrganizerEmail = request.OrganizerEmail,
             OrganizerName = request.OrganizerName
         };

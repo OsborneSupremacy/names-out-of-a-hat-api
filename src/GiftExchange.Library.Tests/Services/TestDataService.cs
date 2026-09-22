@@ -36,7 +36,8 @@ internal class TestDataService
                 Name = newHat.OrganizerName
             },
             Participants = [],
-            InvitationsQueuedDate = DateTimeOffset.MinValue
+            InvitationsQueuedDate = DateTimeOffset.MinValue,
+            ExchangeDate = DateOnly.MinValue
         };
     }
 

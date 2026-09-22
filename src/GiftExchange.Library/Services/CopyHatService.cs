@@ -102,6 +102,9 @@ internal class CopyHatService : IApiGatewayHandler
             Status = HatStatus.InProgress,
             AdditionalInformation = sourceHat.AdditionalInformation,
             PriceRange = sourceHat.PriceRange,
+            // Not carried over. Last year's date is not this year's, and a guess at it would go out
+            // in every invitation unless the organizer thought to correct it.
+            ExchangeDate = DateOnly.MinValue,
             OrganizerEmail = request.OrganizerEmail,
             OrganizerName = sourceHat.Organizer.Name
         };

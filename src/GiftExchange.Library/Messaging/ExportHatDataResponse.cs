@@ -28,6 +28,7 @@ internal static class ExportedHats
         CreatedAt = DateTimeOffset.MinValue,
         InvitationsQueuedAt = DateTimeOffset.MinValue,
         CopiedFromHatId = Guid.Empty,
+        ExchangeDate = DateOnly.MinValue,
         Organizer = new ExportedPerson
         {
             PersonId = Guid.Empty,

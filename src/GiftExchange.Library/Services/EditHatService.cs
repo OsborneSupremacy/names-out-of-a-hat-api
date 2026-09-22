@@ -47,6 +47,15 @@ internal class EditHatService : IApiGatewayHandler
                 new AggregateException(hatPreconditionResult.PreconditionFailureMessage.FailureMessage),
                 hatPreconditionResult.PreconditionFailureMessage.StatusCode);
 
+        // A date that has already passed may be kept -- an exchange set up in good time and then
+        // left alone still has to have its price range edited -- but not newly set. The previous
+        // value is the one the precondition check just read.
+        if (request.ExchangeDate != hatPreconditionResult.Hat.ExchangeDate
+            && ExchangeDates.HasPassed(request.ExchangeDate, DateTimeOffset.UtcNow))
+            return new Result<StatusCodeOnlyResponse>(
+                new InvalidOperationException("The exchange date can't be in the past."),
+                HttpStatusCode.BadRequest);
+
         await _giftExchangeProvider.EditHatAsync(request)
             .ConfigureAwait(false);
 

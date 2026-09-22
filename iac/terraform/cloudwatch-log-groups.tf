@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------------------------
-# The seven Lambda log groups, and why they are declared at all.
+# The eight Lambda log groups, and why they are declared at all.
 #
 # A log group nobody creates still exists. Lambda makes one on the function's first invocation,
 # and a group created that way has no retention policy -- which does not mean a default, it means
@@ -34,6 +34,7 @@ locals {
     (aws_lambda_function.cooled-off-scheduler-handler.function_name)      = "cool-off transition"
     (aws_lambda_function.undeliverable-invitations-handler.function_name) = "undeliverable invitations"
     (aws_lambda_function.data-deletion-queue-handler.function_name)       = "data deletion"
+    (aws_lambda_function.exchange-date-sweep-handler.function_name)       = "exchange date sweep"
   }
 }
 

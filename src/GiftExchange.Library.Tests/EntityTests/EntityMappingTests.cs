@@ -152,6 +152,11 @@ public partial class EntityMappingTests
         // and every write that moves hat.status writes it alongside.
         "hat.status_updated_at",
 
+        // Added by hat--0007 and hat--0008, backfilled by hat--0009. HatEntity.ExchangeDate and
+        // HatEntity.ClosePromptSentAt are non-nullable, and every write of a hat states both.
+        "hat.exchange_date",
+        "hat.close_prompt_sent_at",
+
         // Added by participant--0003, backfilled by participant--0004. It was written to arrive
         // NOT NULL DEFAULT '', on the theory that a default is what lets a column be added
         // constrained to a table already holding rows -- DSQL took neither half, which is where the

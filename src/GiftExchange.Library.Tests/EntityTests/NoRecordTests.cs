@@ -47,6 +47,8 @@ public partial class NoRecordTests
         hat.InvitationsSentFromIp.Should().BeEmpty();
         hat.CreatedAt.Should().Be(DateTimeOffset.MinValue);
         hat.CopiedFromHatId.Should().Be(Guid.Empty);
+        hat.ExchangeDate.Should().Be(DateOnly.MinValue);
+        hat.ClosePromptSentAt.Should().Be(DateTimeOffset.MinValue);
     }
 
     [Fact]

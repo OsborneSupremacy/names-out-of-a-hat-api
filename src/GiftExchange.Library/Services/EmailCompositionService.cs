@@ -34,6 +34,11 @@ public class EmailCompositionService
             $"<b>{request.PickedEmoji} {HttpUtility.HtmlEncode(pickedName)}</b>"
         };
 
+        // Right after the name, because the first thing somebody does with a name is work out how
+        // long they have. Nothing here is typed by anybody, so there is nothing to encode.
+        if (hat.ExchangeDate != DateOnly.MinValue)
+            lines.Add(ExchangeDatePhrasing.Describe(hat.ExchangeDate));
+
         // Encoded after the sentence is built rather than before: the words around the organizer's
         // text are fixed and carry nothing to encode, and PriceRangePhrasing works on what they
         // actually typed rather than on an escaped version of it.

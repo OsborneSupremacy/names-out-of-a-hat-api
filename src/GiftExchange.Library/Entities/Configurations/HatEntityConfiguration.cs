@@ -33,6 +33,10 @@ internal class HatEntityConfiguration : IEntityTypeConfiguration<HatEntity>
             .HasColumnName("copied_from_hat_id")
             .IsRequired();
 
+        // Both added by later ALTERs, like the two above. See the remarks on the properties.
+        builder.Property(hat => hat.ExchangeDate).HasColumnName("exchange_date").IsRequired();
+        builder.Property(hat => hat.ClosePromptSentAt).HasColumnName("close_prompt_sent_at").IsRequired();
+
         builder.HasIndex(hat => hat.OrganizerPersonId).HasDatabaseName("idx_hat_organizer_person");
 
         builder
