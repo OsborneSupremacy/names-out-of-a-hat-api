@@ -69,6 +69,10 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
   const location = useLocation()
   const [hat, setHat] = useState<Hat | null>(null)
   const [loading, setLoading] = useState(true)
+  // Two kinds of failure, kept apart. A load failure means there is no exchange to show, so it
+  // replaces the page. Everything else happened to an exchange that is on screen and stays there,
+  // with the reason above it -- a refused edit used to blank the whole page.
+  const [loadError, setLoadError] = useState<string>('')
   const [error, setError] = useState<string>('')
   const [isEditing, setIsEditing] = useState(false)
   const [editedName, setEditedName] = useState('')
@@ -137,7 +141,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
   useEffect(() => {
     async function loadHat() {
       if (!hatId) {
-        setError('No gift exchange ID provided')
+        setLoadError('No gift exchange ID provided')
         setLoading(false)
         return
       }
@@ -160,7 +164,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
         }
       } catch (err) {
         console.error('Error loading gift exchange:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load gift exchange details')
+        setLoadError(err instanceof Error ? err.message : 'Failed to load gift exchange details')
       } finally {
         setLoading(false)
       }
@@ -199,6 +203,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
     if (!hat || !hatId) return
 
     setSaving(true)
+    setError('')
     try {
       await editHat({
         hatId,
@@ -756,10 +761,11 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
 
           {loading ? (
             <p>Loading gift exchange...</p>
-          ) : error ? (
-            <p className="error-message">{error}</p>
+          ) : loadError ? (
+            <p className="error-message">{loadError}</p>
           ) : hat ? (
             <div className="hat-detail">
+              {error && <p className="error-message action-error">{error}</p>}
               <div className="hat-header">
                 {isEditing ? (
                   <input
@@ -862,9 +868,8 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                         disabled={saving}
                       />
                       <p className="text-muted exchange-date-hint">
-                        Optional, and approximate is fine. It goes in the invitations, and a week after it we'll
-                        remind you to reveal the picked names. Gift exchanges with a date are deleted 18 months
-                        after it.
+                        Optional, and approximate is fine. Giving a date lets us put it in the invitations and
+                        remind you when the gift exchange has passed.
                       </p>
                     </>
                   ) : (

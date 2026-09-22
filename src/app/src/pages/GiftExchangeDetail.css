@@ -418,6 +418,26 @@
   margin-top: 0.5rem !important;
 }
 
+/*
+  Above the exchange rather than in place of it, and spaced off it.
+
+  The colour is restated because .content-wrapper > p in App.css is one element selector more
+  specific than .error-message, so the shared rule's red text lost to that rule's grey and left
+  the message almost unreadable on its own background.
+*/
+.hat-detail > .action-error {
+  color: #dc2626;
+  margin: 0 0 1.5rem 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .hat-detail > .action-error {
+    color: #fca5a5;
+    background-color: #450a0a;
+    border-left-color: #dc2626;
+  }
+}
+
 .participants-section {
   margin-top: 2rem;
 }
