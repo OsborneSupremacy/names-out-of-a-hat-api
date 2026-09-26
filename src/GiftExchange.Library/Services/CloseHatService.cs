@@ -104,7 +104,8 @@ internal class CloseHatService : IApiGatewayHandler
                     ParticipantId = participantIds.GetValueOrDefault(participant.Person.Email, Guid.Empty),
                     MessageType = EmailMessageType.Completion,
                     Subject = CompletionEmailCompositionService.GetSubject(hat),
-                    HtmlBody = _completionEmailCompositionService.ComposeEmail(hat, participant.Person.Name)
+                    HtmlBody = _completionEmailCompositionService.ComposeEmail(hat, participant.Person.Name),
+                    SenderName = hat.Organizer.Name
                 })))
             .ConfigureAwait(false);
     }

@@ -239,6 +239,10 @@ internal class EditParticipantAddressService : IApiGatewayHandler
     {
         string body;
 
+        // Empty unless an invitation is being resent to somebody other than the organizer: the
+        // header points at the leave link, and only that message carries one.
+        var unsubscribeUrl = string.Empty;
+
         if (messageType == EmailMessageType.Completion)
         {
             body = _completionEmailCompositionService.ComposeEmail(hat, change.Name);
@@ -274,6 +278,9 @@ internal class EditParticipantAddressService : IApiGatewayHandler
                 GiftIdeasToken = giftIdeasToken,
                 LeaveToken = leaveToken
             });
+
+            if (!string.IsNullOrWhiteSpace(leaveToken))
+                unsubscribeUrl = EmailCompositionService.LeaveUrlFor(leaveToken);
         }
 
         await _emailQueue.EnqueueAsync(new GiftExchangeEmailRequest
@@ -286,7 +293,9 @@ internal class EditParticipantAddressService : IApiGatewayHandler
             Subject = messageType == EmailMessageType.Completion
                 ? CompletionEmailCompositionService.GetSubject(hat)
                 : EmailCompositionService.GetSubject(hat),
-            HtmlBody = body
+            HtmlBody = body,
+            SenderName = hat.Organizer.Name,
+            UnsubscribeUrl = unsubscribeUrl
         }).ConfigureAwait(false);
 
         _logger.LogInformation(

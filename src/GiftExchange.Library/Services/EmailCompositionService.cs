@@ -85,6 +85,17 @@ public class EmailCompositionService
     private static string GetGreeting(Hat hat, string organizerName, string organizerEmail) =>
         $"{organizerName} ({organizerEmail}) has added you to {HttpUtility.HtmlEncode(GiftExchangeNaming.Describe(hat.Name))}!";
 
+    /// <summary>
+    /// Where a participant's leave link goes.
+    /// </summary>
+    /// <remarks>
+    /// Used twice for one invitation — the sentence in the fine print, and the
+    /// <c>List-Unsubscribe</c> header a mail client offers in its own toolbar — and the two must be
+    /// the same address, or somebody using one would be told the other doesn't exist.
+    /// </remarks>
+    internal static string LeaveUrlFor(string leaveToken) =>
+        $"{Branding.LeaveUrl}/{HttpUtility.UrlEncode(leaveToken)}";
+
     public static string GetSubject(Hat hat) =>
         $"{hat.Organizer.Name} has added you to {GiftExchangeNaming.Describe(hat.Name)}!";
 
@@ -127,7 +138,7 @@ public class EmailCompositionService
 
         if (!string.IsNullOrWhiteSpace(leaveToken))
         {
-            var leaveUrl = $"{Branding.LeaveUrl}/{HttpUtility.UrlEncode(leaveToken)}";
+            var leaveUrl = LeaveUrlFor(leaveToken);
 
             footer.Append(
                 $"""

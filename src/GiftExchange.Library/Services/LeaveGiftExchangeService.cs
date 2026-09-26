@@ -211,7 +211,8 @@ internal class LeaveGiftExchangeService : IApiGatewayHandler
                     ParticipantId = participantIds.GetValueOrDefault(participant.Person.Email, Guid.Empty),
                     MessageType = EmailMessageType.ParticipantLeft,
                     Subject = subject,
-                    HtmlBody = notice
+                    HtmlBody = notice,
+                    SenderName = route.Organizer.Name
                 })));
         }
 

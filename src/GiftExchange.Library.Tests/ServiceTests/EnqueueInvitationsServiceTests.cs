@@ -94,6 +94,14 @@ public class EnqueueInvitationsServiceTests
             email.HtmlBody.Should().Contain(
                 exchange.PickedNames[email.RecipientEmail],
                 "each invitation names that participant's own pick");
+            email.SenderName.Should().NotBeNullOrWhiteSpace(
+                "an invitation is from the organizer, via the product");
+            email.UnsubscribeUrl.Should().StartWith(
+                $"{Branding.LeaveUrl}/",
+                "nobody in this exchange is the organizer, so every invitation carries a leave link");
+            email.HtmlBody.Should().Contain(
+                email.UnsubscribeUrl,
+                "the header and the fine print point at the same link");
         }
     }
 

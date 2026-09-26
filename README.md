@@ -189,6 +189,12 @@ What it will not do is name somebody nothing has been heard about. Only the thre
 
 The email says nothing about the draw. An organizer who is also a participant receives it, and an administrative notice is not a place to let slip what their own invitation was written to keep from them.
 
+### Mail is written for people who never signed up
+
+Almost everybody who receives mail from this application was added by somebody else, and the first they hear of it is an email from a domain they don't know. So invitations come from "Jane Smith via Names Out Of A Hat", every message carries a plain-text part alongside its HTML, and an invitation offers its leave link to the mail client as a `List-Unsubscribe` header. A recipient who wants out and finds no unsubscribe option reaches for "report spam" instead, and a complaint counts against the whole SES account, sign-in links included.
+
+The header deliberately has no `List-Unsubscribe-Post`. One-click unsubscribe has the mail provider POST to the link with nobody on the page, and a POST to the leave link *is* the leave: it removes the participant, sends the organizer back to the hat and tells everybody else to disregard their name. Without it, a client can only open the link, which lands on the same confirmation page as clicking it in the email. Messages that answer something (asks, forwards, notices to the organizer) name only the product in the From line, because a forward that came "via" somebody would say who.
+
 ### Sharing ideas is a page, not a reply
 
 Gift ideas used to arrive by email, at an address unique to each participant. It worked, but it meant guessing where somebody's words ended and the quoted message began, a `mailto:` button that silently did nothing for anybody reading webmail in a browser, and an inbound mail pipeline whose failures were silent. A page has none of those problems, and it's the same GET-renders, POST-acts split the Ask and leaving already use, so a mail scanner fetching the link shares nothing.

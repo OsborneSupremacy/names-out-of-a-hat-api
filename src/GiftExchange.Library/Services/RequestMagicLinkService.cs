@@ -10,8 +10,6 @@ namespace GiftExchange.Library.Services;
 [UsedImplicitly]
 internal class RequestMagicLinkService : IApiGatewayHandler
 {
-    private const string SenderEmail = "donotreply@mail.namesoutofahat.com";
-
     private const string TestRecipient = "osborne.ben@gmail.com";
 
     private const string SignInUrl = "https://namesoutofahat.com/auth";
@@ -75,24 +73,28 @@ internal class RequestMagicLinkService : IApiGatewayHandler
         // being the right one rather than about the tokens we issue today.
         var link = $"{SignInUrl}#token={Uri.EscapeDataString(token)}";
 
+        var html =
+            $"""
+             {EmailBranding.Masthead()}<br /><br />
+             Click below to sign in to Names Out Of A Hat.<br /><br />
+             <a href="{link}"><b>Sign in</b></a><br /><br />
+             This link works once and expires in 15 minutes.<br /><br />
+             If you didn't ask to sign in, you can ignore this email.
+             """;
+
+        // SendEmail rather than the raw send the other senders use: this message needs no header of
+        // its own, and a display name that is plain ASCII is something Source can carry as it is.
         var sendRequest = new SendEmailRequest
         {
-            Source = SenderEmail,
+            Source = OutgoingEmail.Sender(string.Empty).ToString(),
             Destination = new Destination { ToAddresses = [recipient] },
             Message = new Message
             {
                 Subject = new Content("Your Names Out Of A Hat sign-in link" + (_liveMode ? string.Empty : " - TEST MODE")),
                 Body = new Body
                 {
-                    Html = new Content(
-                        $"""
-                         {EmailBranding.Masthead()}<br /><br />
-                         Click below to sign in to Names Out Of A Hat.<br /><br />
-                         <a href="{link}"><b>Sign in</b></a><br /><br />
-                         This link works once and expires in 15 minutes.<br /><br />
-                         If you didn't ask to sign in, you can ignore this email.
-                         """
-                    )
+                    Html = new Content(html),
+                    Text = new Content(EmailPlainText.FromHtml(html))
                 }
             }
         };

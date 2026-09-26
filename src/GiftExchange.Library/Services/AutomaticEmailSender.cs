@@ -20,13 +20,13 @@ namespace GiftExchange.Library.Services;
 /// message sent here is a response to something, so every one of them needs it.
 ///
 /// Nothing sent here carries a Reply-To. On a forward that is load-bearing rather than tidy: a
-/// reply that reached the sender would tell them who holds their name.
+/// reply that reached the sender would tell them who holds their name. For the same reason the From
+/// line names only the product, never a person: a forward or an Ask that came "via" somebody would
+/// say who.
 /// </remarks>
 [UsedImplicitly]
 internal class AutomaticEmailSender
 {
-    private const string SenderEmail = "donotreply@mail.namesoutofahat.com";
-
     private const string TestRecipient = "osborne.ben@gmail.com";
 
     private readonly IAmazonSimpleEmailService _sesClient;
@@ -69,19 +69,15 @@ internal class AutomaticEmailSender
 
         var destination = _liveMode ? recipient : TestRecipient;
 
-        var message = new MimeMessage
-        {
-            Subject = subject + (_liveMode ? string.Empty : " - TEST MODE"),
-            Body = new BodyBuilder { HtmlBody = htmlBody }.ToMessageBody()
-        };
+        var message = OutgoingEmail.Compose(
+            OutgoingEmail.Sender(string.Empty),
+            destination,
+            subject + (_liveMode ? string.Empty : " - TEST MODE"),
+            htmlBody);
 
-        message.From.Add(MailboxAddress.Parse(SenderEmail));
-        message.To.Add(MailboxAddress.Parse(destination));
         message.Headers.Add("Auto-Submitted", "auto-replied");
 
-        using var buffer = new MemoryStream();
-        await message.WriteToAsync(buffer).ConfigureAwait(false);
-        buffer.Position = 0;
+        using var buffer = await OutgoingEmail.ToRawAsync(message).ConfigureAwait(false);
 
         try
         {

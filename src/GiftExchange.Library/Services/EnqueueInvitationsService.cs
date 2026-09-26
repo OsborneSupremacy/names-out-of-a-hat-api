@@ -132,7 +132,11 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
                 // and nothing should reach this, since these ids were read from the same hat.
                 ParticipantId = participantIds.GetValueOrDefault(participant.Person.Email, Guid.Empty),
                 MessageType = EmailMessageType.Invitation,
-                Subject = EmailCompositionService.GetSubject(hat)
+                Subject = EmailCompositionService.GetSubject(hat),
+                SenderName = hat.Organizer.Name,
+                UnsubscribeUrl = string.IsNullOrWhiteSpace(leaveToken)
+                    ? string.Empty
+                    : EmailCompositionService.LeaveUrlFor(leaveToken)
             };
 
             enqueueTasks.Add(_emailQueue.EnqueueAsync(invitation));
