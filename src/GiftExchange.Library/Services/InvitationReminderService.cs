@@ -4,7 +4,7 @@ using System.Web;
 namespace GiftExchange.Library.Services;
 
 /// <summary>
-/// The box at the top of a follow-up email that tells its reader they were sent an invitation, and
+/// The box at the bottom of a follow-up email that tells its reader they were sent an invitation, and
 /// how to find it.
 /// </summary>
 /// <remarks>

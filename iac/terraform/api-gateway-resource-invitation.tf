@@ -4,7 +4,7 @@
 # Longhand rather than through ./modules/api, for the reason the Ask, /ideas and the leave
 # endpoints are: it is reached by clicking a link in an email and it returns a web page.
 #
-# The link is in the box at the top of a follow-up email, for somebody whose invitation was filed
+# The link is in the box at the bottom of a follow-up email, for somebody whose invitation was filed
 # under Promotions or spam and who is hearing about the exchange for the first time. The credential
 # is a gift ideas token in the path, which already opens an Ask page naming the same pick.
 # ---------------------------------------------------------------------------------------------

@@ -12,7 +12,7 @@ using NSubstitute;
 namespace GiftExchange.Library.Tests.ServiceTests;
 
 /// <summary>
-/// The box at the top of a follow-up email for somebody whose invitation went unseen, and the copy
+/// The box at the bottom of a follow-up email for somebody whose invitation went unseen, and the copy
 /// of the invitation it links to, against a real database.
 ///
 /// The property that matters most runs one way: nobody who has not seen their invitation is ever
@@ -110,7 +110,7 @@ public class InvitationReminderTests
     }
 
     [Fact]
-    public async Task AnAsk_ToSomebodyWhoHasPressedNothing_OpensWithTheReminder()
+    public async Task AnAsk_ToSomebodyWhoHasPressedNothing_EndsWithTheReminder()
     {
         // arrange
         var exchange = await SeedAsync();
@@ -127,8 +127,8 @@ public class InvitationReminderTests
             HttpUtility.HtmlEncode(EmailCompositionService.GetSubject(exchange.OrganizerName, exchange.HatName)),
             "the subject line is what finds the invitation in a search, whichever folder it is in");
         html.IndexOf(BoxHeading, StringComparison.Ordinal)
-            .Should().BeLessThan(html.IndexOf("Someone in", StringComparison.Ordinal),
-                "somebody hearing of the exchange for the first time needs the explanation first");
+            .Should().BeGreaterThan(html.IndexOf("We won't tell you who asked", StringComparison.Ordinal),
+                "the box follows the message rather than standing in front of it");
     }
 
     [Fact]

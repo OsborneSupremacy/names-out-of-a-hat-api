@@ -232,11 +232,11 @@ public class GiftIdeaEmailCompositionService
     /// </param>
     public string ComposeForward(string senderName, string hatName, string ideas, string invitationReminder = "") =>
         Wrap([
-            invitationReminder,
             $"<b>{HttpUtility.HtmlEncode(senderName)}</b>, whose name you picked in {HttpUtility.HtmlEncode(GiftExchangeNaming.Describe(hatName))}, shared some gift ideas with you:",
             Quote(ideas),
             ForwardPrivacyNote,
-            BuildLinkDisclaimer()
+            BuildLinkDisclaimer(),
+            invitationReminder
         ]);
 
     /// <summary>
@@ -282,12 +282,12 @@ public class GiftIdeaEmailCompositionService
     /// </remarks>
     internal string ComposeAsk(ComposeAskRequest request) =>
         Wrap([
-            request.InvitationReminder,
             $"Someone in {HttpUtility.HtmlEncode(GiftExchangeNaming.DescribeMidSentence(request.HatName))} would like to know what you'd like.",
             "They picked your name, and they're hoping for a hint. You can share as much or as little as you like.",
             BuildQuestion(request.Question),
             BuildShareGiftIdeasBlock(request.GiftIdeasToken),
-            "<i>We won't tell you who asked, and we won't tell them we passed the message on.</i>"
+            "<i>We won't tell you who asked, and we won't tell them we passed the message on.</i>",
+            request.InvitationReminder
         ]);
 
     /// <summary>
@@ -307,12 +307,12 @@ public class GiftIdeaEmailCompositionService
         var encodedName = HttpUtility.HtmlEncode(request.SubjectName);
 
         return Wrap([
-            request.InvitationReminder,
             $"Someone in {HttpUtility.HtmlEncode(GiftExchangeNaming.DescribeMidSentence(request.HatName))} drew {encodedName}'s name, and they're hoping you might know what {encodedName} would like.",
             $"Anything helps &mdash; something {encodedName} has been after, a hobby, a size, a shop they like, or a link to something you've seen them admire. You can share as much or as little as you want, and you're welcome to ignore this.",
             BuildQuestion(request.Question),
             BuildShareIdeasAboutBlock(request.SubjectName, request.AskToken),
-            $"<i>We won't tell you who asked. {encodedName} isn't being told about this either, and nothing you send goes to them &mdash; only to the person shopping for them.</i>"
+            $"<i>We won't tell you who asked. {encodedName} isn't being told about this either, and nothing you send goes to them &mdash; only to the person shopping for them.</i>",
+            request.InvitationReminder
         ]);
     }
 
@@ -387,11 +387,11 @@ public class GiftIdeaEmailCompositionService
     /// </param>
     public string ComposeOfferedIdeasForward(string sharerName, string subjectName, string hatName, string ideas, string invitationReminder = "") =>
         Wrap([
-            invitationReminder,
             $"<b>{HttpUtility.HtmlEncode(sharerName)}</b> has some ideas about what {HttpUtility.HtmlEncode(subjectName)} might like, and asked us to pass them on to whoever is shopping for {HttpUtility.HtmlEncode(subjectName)} in {HttpUtility.HtmlEncode(GiftExchangeNaming.Describe(hatName))}:",
             Quote(ideas),
             $"<i>Nobody asked for these &mdash; {HttpUtility.HtmlEncode(sharerName)} offered them. You're the only person we've shown them to, we haven't told {HttpUtility.HtmlEncode(sharerName)} who they went to, and {HttpUtility.HtmlEncode(subjectName)} isn't being told about any of this. Please don't reply or thank {HttpUtility.HtmlEncode(sharerName)} &mdash; nobody reads this address, and thanking them would tell them whose name you drew.</i>",
-            BuildLinkDisclaimer()
+            BuildLinkDisclaimer(),
+            invitationReminder
         ]);
 
     /// <summary>

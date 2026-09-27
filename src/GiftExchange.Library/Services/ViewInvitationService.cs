@@ -4,7 +4,7 @@ namespace GiftExchange.Library.Services;
 /// A participant's invitation, on the site, for somebody who cannot find the email.
 /// </summary>
 /// <remarks>
-/// Reached from the reminder at the top of a follow-up email, for a reader whose invitation was
+/// Reached from the reminder at the bottom of a follow-up email, for a reader whose invitation was
 /// filed out of sight. It is the invitation as it was composed for them, buttons and all, so that
 /// nothing about finding it this way leaves them with less than the email would have.
 ///
