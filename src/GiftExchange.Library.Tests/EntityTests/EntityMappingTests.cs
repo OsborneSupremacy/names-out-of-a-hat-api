@@ -172,7 +172,13 @@ public partial class EntityMappingTests
         // Added by person--0003, backfilled by person--0004. PersonEntity.AddedByPersonId is
         // non-nullable, and the two paths that write a person -- ResolvePersonIdAsync and the
         // address correction that lands on an address nobody holds -- both state it.
-        "person.added_by_person_id"
+        "person.added_by_person_id",
+
+        // Added by gift_idea_token--0002 and --0003, backfilled by --0004.
+        // GiftIdeaTokenEntity.ProvesInvitationSeen and FirstUsedAt are non-nullable, and both paths
+        // that issue a token state them.
+        "gift_idea_token.proves_invitation_seen",
+        "gift_idea_token.first_used_at"
     ];
 
     /// <summary>

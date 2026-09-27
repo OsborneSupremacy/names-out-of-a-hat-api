@@ -195,6 +195,14 @@ Almost everybody who receives mail from this application was added by somebody e
 
 The header deliberately has no `List-Unsubscribe-Post`. One-click unsubscribe has the mail provider POST to the link with nobody on the page, and a POST to the leave link *is* the leave: it removes the participant, sends the organizer back to the hat and tells everybody else to disregard their name. Without it, a client can only open the link, which lands on the same confirmation page as clicking it in the email. Messages that answer something (asks, forwards, notices to the organizer) name only the product in the From line, because a forward that came "via" somebody would say who.
 
+### An unseen invitation is caught by the email after it
+
+Gmail sometimes files an invitation under Promotions — a logo and three coloured buttons look like marketing — while the short follow-ups that come later land in the inbox. So the first thing some participants read is somebody asking what they'd like, for an exchange they've never heard of.
+
+Every follow-up that can reach such a person — an Ask, and ideas forwarded to whoever drew somebody — now opens with a box saying they were sent an invitation, roughly when, and the exact subject line to search for, since a search finds it whichever folder it landed in. It also links to `/invitation/{token}`, which shows the invitation itself: a GET that changes nothing, behind a gift ideas token, which already opened an Ask page naming the same pick. The leave sentence is missing from that copy, because the leave token can't be recovered and reissuing it would break the link in the email.
+
+The box stops once somebody has plainly read their invitation, and "plainly" is the design. It isn't opens, for the reasons above. It's a button pressed — a POST, which scanners don't make — with a token that could only have come from the invitation or from that page. Tokens issued by an Ask don't count, because that email may be the first thing from us the reader has seen. Showing the box once too often costs a few lines; hiding it from somebody who never saw their invitation costs them the exchange.
+
 ### Sharing ideas is a page, not a reply
 
 Gift ideas used to arrive by email, at an address unique to each participant. It worked, but it meant guessing where somebody's words ended and the quoted message began, a `mailto:` button that silently did nothing for anybody reading webmail in a browser, and an inbound mail pipeline whose failures were silent. A page has none of those problems, and it's the same GET-renders, POST-acts split the Ask and leaving already use, so a mail scanner fetching the link shares nothing.

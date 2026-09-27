@@ -252,7 +252,12 @@ internal class EditParticipantAddressService : IApiGatewayHandler
             // A fresh one, because the ones the old address was sent were revoked before this
             // was called.
             var giftIdeasToken = await _giftExchangeProvider
-                .IssueGiftIdeaTokenAsync(change.ParticipantId)
+                .IssueGiftIdeaTokenAsync(new IssueGiftIdeaTokenRequest
+                {
+                    ParticipantId = change.ParticipantId,
+                    // It goes into the resent invitation.
+                    ProvesInvitationSeen = true
+                })
                 .ConfigureAwait(false);
 
             // Replaced rather than revoked up front, because a new one is only wanted when an

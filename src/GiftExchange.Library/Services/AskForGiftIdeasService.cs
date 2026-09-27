@@ -61,6 +61,8 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
 
     private readonly AutomaticEmailSender _sender;
 
+    private readonly InvitationReminderService _invitationReminder;
+
     private readonly AskQuestionPolicy _questionPolicy;
 
     private readonly IContentModerationService _contentModerationService;
@@ -73,6 +75,7 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
         GiftIdeaEmailCompositionService composer,
         AskPageComposer pageComposer,
         AutomaticEmailSender sender,
+        InvitationReminderService invitationReminder,
         AskQuestionPolicy questionPolicy,
         IContentModerationService contentModerationService,
         ILogger<AskForGiftIdeasService> logger
@@ -83,6 +86,7 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
         _pageComposer = pageComposer ?? throw new ArgumentNullException(nameof(pageComposer));
         _sender = sender ?? throw new ArgumentNullException(nameof(sender));
+        _invitationReminder = invitationReminder ?? throw new ArgumentNullException(nameof(invitationReminder));
         _questionPolicy = questionPolicy ?? throw new ArgumentNullException(nameof(questionPolicy));
         _contentModerationService = contentModerationService ?? throw new ArgumentNullException(nameof(contentModerationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -123,17 +127,24 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
         if (candidates.IsEmpty)
             return Page(AskPageComposer.ComposeUnavailable());
 
-        return request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase)
-            ? await SendAsksAsync(request, route, token, candidates).ConfigureAwait(false)
-            : Page(_pageComposer.ComposeChoose(new ComposeChooseRequest
-            {
-                SubjectName = route.DisplayNameOf(route.SenderPickedRecipient),
-                Candidates = candidates,
-                AskToken = token,
-                Notice = string.Empty,
-                Question = string.Empty,
-                Chosen = []
-            }));
+        if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase))
+        {
+            // Whatever becomes of the asks: somebody pressed the button, and that is what the
+            // invitation reminder wants to know.
+            await _giftExchangeProvider.MarkGiftIdeaTokenUsedAsync(SecretToken.Hash(token)).ConfigureAwait(false);
+
+            return await SendAsksAsync(request, route, token, candidates).ConfigureAwait(false);
+        }
+
+        return Page(_pageComposer.ComposeChoose(new ComposeChooseRequest
+        {
+            SubjectName = route.DisplayNameOf(route.SenderPickedRecipient),
+            Candidates = candidates,
+            AskToken = token,
+            Notice = string.Empty,
+            Question = string.Empty,
+            Chosen = []
+        }));
     }
 
     private async Task<APIGatewayProxyResponse> SendAsksAsync(
@@ -334,7 +345,17 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
     private async Task AskThemWhatTheyWouldLikeAsync(GiftIdeaRoute route, AskTarget target, string question)
     {
         var giftIdeasToken = await _giftExchangeProvider
-            .IssueGiftIdeaTokenAsync(target.ParticipantId)
+            .IssueGiftIdeaTokenAsync(new IssueGiftIdeaTokenRequest
+            {
+                ParticipantId = target.ParticipantId,
+                // This email may be the first thing from us they have read, so sharing ideas from
+                // it says nothing about whether they have seen their invitation.
+                ProvesInvitationSeen = false
+            })
+            .ConfigureAwait(false);
+
+        var invitationReminder = await _invitationReminder
+            .ComposeForAsync(target.ParticipantId)
             .ConfigureAwait(false);
 
         await _sender.SendAsync(
@@ -344,7 +365,8 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
                 {
                     HatName = route.HatName,
                     GiftIdeasToken = giftIdeasToken,
-                    Question = question
+                    Question = question,
+                    InvitationReminder = invitationReminder
                 }))
             .ConfigureAwait(false);
     }
@@ -366,6 +388,10 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
                 route.SenderPickedRecipientParticipantId)
             .ConfigureAwait(false);
 
+        var invitationReminder = await _invitationReminder
+            .ComposeForAsync(target.ParticipantId)
+            .ConfigureAwait(false);
+
         await _sender.SendAsync(
                 target.Person.Email,
                 GiftIdeaEmailCompositionService.ContributionAskSubject(route.DisplayNameOf(route.SenderPickedRecipient)),
@@ -374,7 +400,8 @@ internal class AskForGiftIdeasService : IApiGatewayHandler
                     HatName = route.HatName,
                     SubjectName = route.DisplayNameOf(route.SenderPickedRecipient),
                     AskToken = askToken,
-                    Question = question
+                    Question = question,
+                    InvitationReminder = invitationReminder
                 }))
             .ConfigureAwait(false);
     }

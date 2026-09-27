@@ -53,4 +53,13 @@ public static class HatStatuses
         HatStatus.ReadyForAssignment,
         HatStatus.NamesAssigned
     ];
+
+    /// <summary>
+    /// While a participant's invitation is the one that stands: sent, and neither superseded by a
+    /// new draw nor overtaken by the exchange closing and everybody being sent the full list.
+    /// </summary>
+    public static readonly ImmutableList<string> InvitationStanding = [
+        HatStatus.InvitationsSent,
+        HatStatus.CooledOff
+    ];
 }

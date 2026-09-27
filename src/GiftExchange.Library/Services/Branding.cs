@@ -41,6 +41,12 @@ internal static class Branding
     internal const string LeaveUrl = $"{ApiUrl}/leave";
 
     /// <summary>
+    /// The base of the link to a participant's invitation on the site. The token follows as a path
+    /// segment.
+    /// </summary>
+    internal const string InvitationUrl = $"{ApiUrl}/invitation";
+
+    /// <summary>
     /// The organizer's own page for one exchange, on the front end rather than on the API.
     /// </summary>
     /// <remarks>

@@ -76,6 +76,7 @@ public class AskForGiftIdeasServiceTests
             new GiftIdeaEmailCompositionService(),
             new AskPageComposer(),
             new AutomaticEmailSender(_ses, Substitute.For<ILogger<AutomaticEmailSender>>()),
+            new InvitationReminderService(_provider, Substitute.For<ILogger<InvitationReminderService>>()),
             new AskQuestionPolicy(),
             _moderation,
             Substitute.For<ILogger<AskForGiftIdeasService>>());
@@ -193,11 +194,15 @@ public class AskForGiftIdeasServiceTests
         await using var context = _contextFactory.CreateDbContext();
 
         var tokens = await context.GiftIdeaTokens
-            .CountAsync(token => token.ParticipantId == exchange.BetaId);
+            .Where(token => token.ParticipantId == exchange.BetaId)
+            .ToListAsync();
 
         // Alongside the one they were issued with their invitation, not instead of it — theirs
         // cannot be reconstructed, and replacing it would kill the address already in their inbox.
-        tokens.Should().Be(2);
+        // The ask's own proves nothing about the invitation; the third is the invitation reminder's,
+        // since Beta has pressed nothing yet.
+        tokens.Should().HaveCount(3);
+        tokens.Count(token => !token.ProvesInvitationSeen).Should().Be(1);
     }
 
     [Fact]
@@ -363,8 +368,11 @@ public class AskForGiftIdeasServiceTests
         // whoever drew them.
         await using var context = _contextFactory.CreateDbContext();
 
-        (await context.GiftIdeaTokens.CountAsync(token => token.ParticipantId == exchange.GammaId))
-            .Should().Be(1, "only the token issued with their invitation");
+        // The invitation reminder may issue Gamma one that opens their own invitation, which is
+        // theirs to have; what must not exist is one issued by the ask itself.
+        (await context.GiftIdeaTokens.CountAsync(token =>
+                token.ParticipantId == exchange.GammaId && !token.ProvesInvitationSeen))
+            .Should().Be(0, "the ask is about Beta, and carries an ask token rather than one of Gamma's own");
     }
 
     [Fact]

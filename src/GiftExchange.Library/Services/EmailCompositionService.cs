@@ -25,7 +25,7 @@ public class EmailCompositionService
 
         var lines = new List<string>
         {
-            EmailBranding.Masthead(),
+            request.IncludeMasthead ? EmailBranding.Masthead() : string.Empty,
             $"Dear {HttpUtility.HtmlEncode(request.ParticipantName)},",
             GetGreeting(hat, organizerName, organizerEmail),
             "The person whose name was picked out of a hat for you is:",
@@ -69,7 +69,9 @@ public class EmailCompositionService
 
         var body = new StringBuilder();
 
-        foreach (var line in lines)
+        // Skipped rather than spaced: the masthead is left out of the site's copy, and an empty line
+        // would open the page with a gap where it had been.
+        foreach (var line in lines.Where(line => line.Length > 0))
         {
             body.Append(line);
             body.AppendLine("<br /><br />");
@@ -97,7 +99,14 @@ public class EmailCompositionService
         $"{Branding.LeaveUrl}/{HttpUtility.UrlEncode(leaveToken)}";
 
     public static string GetSubject(Hat hat) =>
-        $"{hat.Organizer.Name} has added you to {GiftExchangeNaming.Describe(hat.Name)}!";
+        GetSubject(hat.Organizer.Name, hat.Name);
+
+    /// <summary>
+    /// The same subject line from its two parts, for the invitation reminder, which tells somebody
+    /// what to search their mail for and has no whole hat to hand.
+    /// </summary>
+    internal static string GetSubject(string organizerName, string hatName) =>
+        $"{organizerName} has added you to {GiftExchangeNaming.Describe(hatName)}!";
 
     /// <summary>
     /// The footer every invitation carries: who it came from, what this service checks, what it

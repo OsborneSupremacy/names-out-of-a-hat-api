@@ -19,4 +19,10 @@ internal record ComposeContributionAskRequest
     /// <see cref="Services.AskQuestionPolicy"/> and moderation, and still encoded before it is placed.
     /// </summary>
     public required string Question { get; init; }
+
+    /// <summary>
+    /// The box reminding the reader they were sent an invitation, or empty when they don't need one.
+    /// Markup from <see cref="Services.InvitationReminderService"/>, placed as it is.
+    /// </summary>
+    public string InvitationReminder { get; init; } = string.Empty;
 }

@@ -153,7 +153,11 @@ public class EditParticipantAddressServiceTests
         var exchange = await SeedAsync(HatStatus.InvitationsSent);
         var ids = await _provider.GetParticipantIdsByEmailAsync(exchange.HatId);
 
-        var oldToken = await _provider.IssueGiftIdeaTokenAsync(exchange.TargetParticipantId);
+        var oldToken = await _provider.IssueGiftIdeaTokenAsync(new IssueGiftIdeaTokenRequest
+        {
+            ParticipantId = exchange.TargetParticipantId,
+            ProvesInvitationSeen = false
+        });
         var oldAskToken = await _provider.IssueGiftIdeaAskAsync(
             ids[exchange.OtherEmail], exchange.TargetParticipantId, ids[exchange.OtherEmail]);
 

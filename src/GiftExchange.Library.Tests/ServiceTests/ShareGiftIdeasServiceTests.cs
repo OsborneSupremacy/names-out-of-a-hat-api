@@ -80,6 +80,7 @@ public class ShareGiftIdeasServiceTests
             new GiftIdeaEmailCompositionService(),
             new ShareIdeasPageComposer(),
             new AutomaticEmailSender(_ses, Substitute.For<ILogger<AutomaticEmailSender>>()),
+            new InvitationReminderService(_provider, Substitute.For<ILogger<InvitationReminderService>>()),
             Substitute.For<ILogger<ShareGiftIdeasService>>());
     }
 

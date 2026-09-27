@@ -79,6 +79,7 @@ public class OfferGiftIdeasServiceTests
             new GiftIdeaEmailCompositionService(),
             new OfferIdeasPageComposer(),
             new AutomaticEmailSender(_ses, Substitute.For<ILogger<AutomaticEmailSender>>()),
+            new InvitationReminderService(_provider, Substitute.For<ILogger<InvitationReminderService>>()),
             Substitute.For<ILogger<OfferGiftIdeasService>>());
     }
 

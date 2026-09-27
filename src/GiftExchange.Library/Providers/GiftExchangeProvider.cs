@@ -902,7 +902,10 @@ public class GiftExchangeProvider
                     GiftIdeaTokenId = Guid.CreateVersion7(),
                     ParticipantId = participant.ParticipantId,
                     TokenHash = SecretToken.Hash(token),
-                    IssuedAt = DateTimeOffset.UtcNow
+                    IssuedAt = DateTimeOffset.UtcNow,
+                    // These go into the invitations themselves.
+                    ProvesInvitationSeen = true,
+                    FirstUsedAt = DateTimeOffset.MinValue
                 });
 
                 issued[participant.Email] = token;
@@ -1783,7 +1786,7 @@ public class GiftExchangeProvider
     /// participant, so nothing downstream has to know how many there are.
     /// </remarks>
     /// <returns>The token in the clear. Only ever available here.</returns>
-    public async Task<string> IssueGiftIdeaTokenAsync(Guid participantId)
+    internal async Task<string> IssueGiftIdeaTokenAsync(IssueGiftIdeaTokenRequest request)
     {
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
@@ -1792,14 +1795,165 @@ public class GiftExchangeProvider
         context.GiftIdeaTokens.Add(new GiftIdeaTokenEntity
         {
             GiftIdeaTokenId = Guid.CreateVersion7(),
-            ParticipantId = participantId,
+            ParticipantId = request.ParticipantId,
             TokenHash = SecretToken.Hash(token),
-            IssuedAt = DateTimeOffset.UtcNow
+            IssuedAt = DateTimeOffset.UtcNow,
+            ProvesInvitationSeen = request.ProvesInvitationSeen,
+            FirstUsedAt = DateTimeOffset.MinValue
         });
 
         await context.SaveChangesAsync().ConfigureAwait(false);
 
         return token;
+    }
+
+    /// <summary>
+    /// Records that somebody pressed a button on a page this token opened, the first time they do.
+    /// </summary>
+    /// <remarks>
+    /// Called from the POST behind each of those buttons and never from the GET, because mail
+    /// scanners fetch every link in a delivered email and a fetch is not a person. A press is.
+    ///
+    /// Only the first press is kept. What the reminder wants to know is whether this has ever
+    /// happened, and a timestamp that moved on every press would be a log of somebody's activity
+    /// that nothing here needs.
+    /// </remarks>
+    /// <param name="tokenHash"><see cref="SecretToken.Hash"/> of the token taken from the link.</param>
+    public async Task MarkGiftIdeaTokenUsedAsync(string tokenHash)
+    {
+        if (string.IsNullOrWhiteSpace(tokenHash))
+            return;
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        await context.GiftIdeaTokens
+            .Where(token => token.TokenHash == tokenHash && token.FirstUsedAt == DateTimeOffset.MinValue)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(token => token.FirstUsedAt, DateTimeOffset.UtcNow))
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Whether an email to this participant should remind them that they were sent an invitation,
+    /// and what it should say if so.
+    /// </summary>
+    /// <remarks>
+    /// Needed until they have pressed a button with a token that proves they saw the invitation —
+    /// one that came in the invitation itself, or behind the link to the invitation page. Both of
+    /// those are deleted when invitations are sent again and when an address is corrected, so a
+    /// new draw or a new inbox starts over, which is right: what was seen was the old one.
+    ///
+    /// Never for the organizer. They sent the invitations, and a box asking whether this is the
+    /// first they have heard of their own exchange would be absurd.
+    ///
+    /// Only while an invitation stands. Before one is sent there is nothing to remind anybody of,
+    /// and once the exchange has closed everybody has been sent the full list.
+    /// </remarks>
+    internal async Task<InvitationReminderFacts> GetInvitationReminderAsync(Guid participantId)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var participant = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.ParticipantId == participantId)
+            .Select(participant => new
+            {
+                participant.PersonId,
+                participant.Hat.OrganizerPersonId,
+                participant.Hat.Status,
+                participant.Hat.Name,
+                OrganizerName = participant.Hat.Organizer.Name,
+                participant.Hat.InvitationsQueuedAt
+            })
+            .SingleOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        if (participant is null
+            || participant.PersonId == participant.OrganizerPersonId
+            || !HatStatuses.InvitationStanding.Contains(participant.Status))
+            return InvitationReminders.NotNeeded;
+
+        var seen = await context.GiftIdeaTokens
+            .AnyAsync(token =>
+                token.ParticipantId == participantId
+                && token.ProvesInvitationSeen
+                && token.FirstUsedAt > DateTimeOffset.MinValue)
+            .ConfigureAwait(false);
+
+        if (seen)
+            return InvitationReminders.NotNeeded;
+
+        // The latest, because an address correction sends a second invitation and that is the one
+        // they should look for.
+        var sentAt = await context.ParticipantEmailDeliveries
+            .AsNoTracking()
+            .Where(delivery =>
+                delivery.ParticipantId == participantId
+                && delivery.MessageType == EmailMessageType.Invitation)
+            .OrderByDescending(delivery => delivery.OccurredAt)
+            .Select(delivery => delivery.OccurredAt)
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        return new InvitationReminderFacts
+        {
+            IsNeeded = true,
+            OrganizerName = participant.OrganizerName,
+            HatName = participant.Name,
+            SentAt = sentAt == default ? participant.InvitationsQueuedAt : sentAt
+        };
+    }
+
+    /// <summary>
+    /// Finds the exchange and participant a gift ideas token belongs to, for showing them their
+    /// invitation again.
+    /// </summary>
+    /// <remarks>
+    /// Not found unless the invitation stands. A token outlives a new draw — the tokens are only
+    /// reissued when invitations are sent again — and between the two, the pick it would show is
+    /// one nobody has been told yet.
+    /// </remarks>
+    /// <param name="tokenHash"><see cref="SecretToken.Hash"/> of the token taken from the link.</param>
+    internal async Task<(bool found, ViewableInvitation invitation)> FindViewableInvitationAsync(string tokenHash)
+    {
+        if (string.IsNullOrWhiteSpace(tokenHash))
+            return (false, ViewableInvitations.Empty);
+
+        Guid hatId;
+        string organizerEmail;
+        string participantEmail;
+
+        await using (var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false))
+        {
+            var match = await context.GiftIdeaTokens
+                .AsNoTracking()
+                .Where(token => token.TokenHash == tokenHash)
+                .Join(
+                    context.Participants,
+                    token => token.ParticipantId,
+                    participant => participant.ParticipantId,
+                    (_, participant) => new
+                    {
+                        participant.HatId,
+                        participant.Hat.Status,
+                        OrganizerEmail = participant.Hat.Organizer.Email,
+                        participant.Person.Email
+                    })
+                .SingleOrDefaultAsync()
+                .ConfigureAwait(false);
+
+            if (match is null || !HatStatuses.InvitationStanding.Contains(match.Status))
+                return (false, ViewableInvitations.Empty);
+
+            hatId = match.HatId;
+            organizerEmail = match.OrganizerEmail;
+            participantEmail = match.Email;
+        }
+
+        var (exists, hat) = await GetHatAsync(organizerEmail, hatId).ConfigureAwait(false);
+
+        return exists
+            ? (true, new ViewableInvitation { Hat = hat, ParticipantEmail = participantEmail })
+            : (false, ViewableInvitations.Empty);
     }
 
     /// <summary>

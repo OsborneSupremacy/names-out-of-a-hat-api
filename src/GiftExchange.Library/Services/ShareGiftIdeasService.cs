@@ -42,6 +42,8 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
 
     private readonly AutomaticEmailSender _sender;
 
+    private readonly InvitationReminderService _invitationReminder;
+
     private readonly ILogger<ShareGiftIdeasService> _logger;
 
     public ShareGiftIdeasService(
@@ -51,6 +53,7 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         GiftIdeaEmailCompositionService composer,
         ShareIdeasPageComposer pageComposer,
         AutomaticEmailSender sender,
+        InvitationReminderService invitationReminder,
         ILogger<ShareGiftIdeasService> logger
     )
     {
@@ -60,6 +63,7 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
         _pageComposer = pageComposer ?? throw new ArgumentNullException(nameof(pageComposer));
         _sender = sender ?? throw new ArgumentNullException(nameof(sender));
+        _invitationReminder = invitationReminder ?? throw new ArgumentNullException(nameof(invitationReminder));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -80,9 +84,16 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         if (!found || !AcceptingStatuses.Contains(route.HatStatus))
             return Page(ShareIdeasPageComposer.ComposeUnavailable());
 
-        return request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase)
-            ? await ShareAsync(route, token, ParseSubmission(request)).ConfigureAwait(false)
-            : await ShowFormAsync(route, token).ConfigureAwait(false);
+        if (!request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase))
+            return await ShowFormAsync(route, token).ConfigureAwait(false);
+
+        // Whatever becomes of the submission: somebody pressed the button, and that is what the
+        // invitation reminder wants to know. An ask's token is in another table and matches nothing
+        // here, which is right — answering somebody else's ask says nothing about one's own
+        // invitation.
+        await _giftExchangeProvider.MarkGiftIdeaTokenUsedAsync(SecretToken.Hash(token)).ConfigureAwait(false);
+
+        return await ShareAsync(route, token, ParseSubmission(request)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -275,7 +286,7 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
             })
         };
 
-    private Task ForwardAsync(GiftIdeaRoute route, string ideas)
+    private async Task ForwardAsync(GiftIdeaRoute route, string ideas)
     {
         // Nobody has drawn this participant, so there is nobody to forward to. The submission is
         // already stored. A contribution always has somebody — the asker — so this is only ever
@@ -283,7 +294,7 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         if (string.IsNullOrWhiteSpace(route.Giver.Email))
         {
             _logger.LogInformation("Stored a gift ideas submission with nobody yet to forward it to.");
-            return Task.CompletedTask;
+            return;
         }
 
         // Subject and body chosen together, so that the two cannot be made to disagree about which
@@ -295,10 +306,16 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
                 _composer.ComposeContributionForward(route.DisplayNameOf(route.Sender), route.DisplayNameOf(route.Subject), route.HatName, ideas)),
             false => (
                 GiftIdeaEmailCompositionService.ForwardSubject(route.DisplayNameOf(route.Sender)),
-                _composer.ComposeForward(route.DisplayNameOf(route.Sender), route.HatName, ideas))
+                _composer.ComposeForward(
+                    route.DisplayNameOf(route.Sender),
+                    route.HatName,
+                    ideas,
+                    // Only on this path. A contribution goes back to whoever asked for it, and
+                    // they pressed a button to ask.
+                    await _invitationReminder.ComposeForAsync(route.GiverParticipantId).ConfigureAwait(false)))
         };
 
-        return _sender.SendAsync(route.Giver.Email, subject, body);
+        await _sender.SendAsync(route.Giver.Email, subject, body).ConfigureAwait(false);
     }
 
     /// <summary>

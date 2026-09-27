@@ -1477,3 +1477,55 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: AWS IAM REVOKE giftexchange_user FROM '${undeliverable_invitations_role_arn}'
+
+  # Two columns and a backfill, for the reason hat--0007/0008/0009 give: DSQL takes one DDL
+  # statement per changeset and neither a NOT NULL nor a DEFAULT on an ADD COLUMN.
+  - changeSet:
+      id: gift_idea_token--0002
+      author: ben
+      comment: >
+        Whether a button pressed with this token proves its holder has seen their invitation. True
+        for a token carried by an invitation, or by the link to the invitation page; false for one
+        issued by an Ask, whose email sits in an inbox that may never have shown the invitation at
+        all.
+
+        Stays nullable, for the reasons hat--0003 gives. gift_idea_token--0004 fills in the rows that
+        existed.
+      changes:
+        - sql:
+            sql: ALTER TABLE gift_idea_token ADD COLUMN proves_invitation_seen BOOLEAN
+      rollback:
+        - sql:
+            sql: ALTER TABLE gift_idea_token DROP COLUMN proves_invitation_seen
+
+  - changeSet:
+      id: gift_idea_token--0003
+      author: ben
+      comment: >
+        When a button was first pressed on a page this token opened, or the minimum timestamp until
+        one has been. Only a POST sets it: mail scanners fetch every link in a delivered email, so a
+        GET proves nothing about a person.
+
+        Stays nullable, for the reasons hat--0003 gives. gift_idea_token--0004 fills in the rows that
+        existed.
+      changes:
+        - sql:
+            sql: ALTER TABLE gift_idea_token ADD COLUMN first_used_at TIMESTAMPTZ
+      rollback:
+        - sql:
+            sql: ALTER TABLE gift_idea_token DROP COLUMN first_used_at
+
+  - changeSet:
+      id: gift_idea_token--0004
+      author: ben
+      comment: >
+        Fills both columns for the tokens that predate them. See the file for how an invitation's
+        token is told apart from an Ask's.
+      changes:
+        - sqlFile:
+            path: tables/gift_idea_token--0004.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: UPDATE gift_idea_token SET proves_invitation_seen = NULL, first_used_at = NULL

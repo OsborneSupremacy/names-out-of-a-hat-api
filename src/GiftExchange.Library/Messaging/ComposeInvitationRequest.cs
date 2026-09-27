@@ -50,4 +50,10 @@ internal record ComposeInvitationRequest
     /// out of the fine print rather than pointed nowhere.
     /// </summary>
     public required string LeaveToken { get; init; }
+
+    /// <summary>
+    /// Whether the wordmark leads the invitation. False on the site's copy of it, whose page shell
+    /// already carries one.
+    /// </summary>
+    public bool IncludeMasthead { get; init; } = true;
 }

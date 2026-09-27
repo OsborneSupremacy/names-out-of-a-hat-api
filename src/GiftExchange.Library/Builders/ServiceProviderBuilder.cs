@@ -182,6 +182,10 @@ internal static class ServiceProviderBuilder
                 .AddKeyedSingleton<IApiGatewayHandler, LeaveGiftExchangeService>("get/leave/{token}")
                 .AddKeyedSingleton<IApiGatewayHandler, LeaveGiftExchangeService>("post/leave/{token}")
 
+                // A GET and nothing else. It shows a participant the invitation they could not find,
+                // and changes nothing, so a scanner fetching it is harmless.
+                .AddKeyedSingleton<IApiGatewayHandler, ViewInvitationService>("get/invitation/{token}")
+
                 .AddKeyedSingleton<IApiGatewayHandler, GetHatService>("get/hat/{email}/{id}")
                 .AddKeyedSingleton<IApiGatewayHandler, ExportHatService>("get/hat/{email}/export/{id}")
                 .AddKeyedSingleton<IApiGatewayHandler, GetHatsService>("get/hats/{email}")
@@ -244,6 +248,7 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<AskQuestionPolicy>()
                 .AddSingleton<IReplyThrottleProvider, ReplyThrottleProvider>()
                 .AddSingleton<AutomaticEmailSender>()
+                .AddSingleton<InvitationReminderService>()
                 .AddSingleton<IEmailQueue, EmailQueue>()
                 .AddSingleton<IDataDeletionQueue, DataDeletionQueue>()
                 .AddSingleton<DataDeletionQueueHandlerService>()

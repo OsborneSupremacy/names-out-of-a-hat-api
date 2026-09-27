@@ -59,6 +59,8 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
 
     private readonly AutomaticEmailSender _sender;
 
+    private readonly InvitationReminderService _invitationReminder;
+
     private readonly ILogger<OfferGiftIdeasService> _logger;
 
     public OfferGiftIdeasService(
@@ -69,6 +71,7 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
         GiftIdeaEmailCompositionService composer,
         OfferIdeasPageComposer pageComposer,
         AutomaticEmailSender sender,
+        InvitationReminderService invitationReminder,
         ILogger<OfferGiftIdeasService> logger
     )
     {
@@ -79,6 +82,7 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
         _pageComposer = pageComposer ?? throw new ArgumentNullException(nameof(pageComposer));
         _sender = sender ?? throw new ArgumentNullException(nameof(sender));
+        _invitationReminder = invitationReminder ?? throw new ArgumentNullException(nameof(invitationReminder));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -114,17 +118,24 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
         if (candidates.IsEmpty)
             return Page(ShareIdeasPageComposer.ComposeUnavailable());
 
-        return request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase)
-            ? await OfferAsync(route, token, candidates, ParseSubmission(request)).ConfigureAwait(false)
-            : Page(_pageComposer.ComposeForm(new ComposeOfferIdeasFormRequest
-            {
-                Token = token,
-                Candidates = candidates,
-                // Nothing ticked on the way in. There is no ordinary choice to offer first.
-                ChosenSubjectId = Guid.Empty,
-                Ideas = string.Empty,
-                Notice = string.Empty
-            }));
+        if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase))
+        {
+            // Whatever becomes of the offer: somebody pressed the button, and that is what the
+            // invitation reminder wants to know.
+            await _giftExchangeProvider.MarkGiftIdeaTokenUsedAsync(SecretToken.Hash(token)).ConfigureAwait(false);
+
+            return await OfferAsync(route, token, candidates, ParseSubmission(request)).ConfigureAwait(false);
+        }
+
+        return Page(_pageComposer.ComposeForm(new ComposeOfferIdeasFormRequest
+        {
+            Token = token,
+            Candidates = candidates,
+            // Nothing ticked on the way in. There is no ordinary choice to offer first.
+            ChosenSubjectId = Guid.Empty,
+            Ideas = string.Empty,
+            Notice = string.Empty
+        }));
     }
 
     /// <summary>
@@ -229,24 +240,30 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
     /// Neither log line names anybody. A log that said who had no giver would be a record of the
     /// draw.
     /// </remarks>
-    private Task ForwardAsync(GiftIdeaRoute route, OfferTarget target, string ideas)
+    private async Task ForwardAsync(GiftIdeaRoute route, OfferTarget target, string ideas)
     {
         if (string.IsNullOrWhiteSpace(target.Giver.Email))
         {
             _logger.LogInformation("Stored an offer of gift ideas with nobody yet to forward it to.");
-            return Task.CompletedTask;
+            return;
         }
 
         if (target.GiverParticipantId == route.ParticipantId)
         {
             _logger.LogInformation("Stored an offer of gift ideas that would have returned to its sender.");
-            return Task.CompletedTask;
+            return;
         }
 
-        return _sender.SendAsync(
-            target.Giver.Email,
-            GiftIdeaEmailCompositionService.ContributionForwardSubject(route.DisplayNameOf(route.Sender), target.SubjectName),
-            _composer.ComposeOfferedIdeasForward(route.DisplayNameOf(route.Sender), target.SubjectName, route.HatName, ideas));
+        var invitationReminder = await _invitationReminder
+            .ComposeForAsync(target.GiverParticipantId)
+            .ConfigureAwait(false);
+
+        await _sender.SendAsync(
+                target.Giver.Email,
+                GiftIdeaEmailCompositionService.ContributionForwardSubject(route.DisplayNameOf(route.Sender), target.SubjectName),
+                _composer.ComposeOfferedIdeasForward(
+                    route.DisplayNameOf(route.Sender), target.SubjectName, route.HatName, ideas, invitationReminder))
+            .ConfigureAwait(false);
     }
 
     /// <summary>

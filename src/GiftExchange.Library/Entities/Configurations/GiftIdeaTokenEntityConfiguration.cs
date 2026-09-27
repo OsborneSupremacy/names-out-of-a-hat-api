@@ -20,6 +20,10 @@ internal class GiftIdeaTokenEntityConfiguration : IEntityTypeConfiguration<GiftI
 
         builder.Property(token => token.IssuedAt).HasColumnName("issued_at").IsRequired();
 
+        builder.Property(token => token.ProvesInvitationSeen).HasColumnName("proves_invitation_seen").IsRequired();
+
+        builder.Property(token => token.FirstUsedAt).HasColumnName("first_used_at").IsRequired();
+
         // A share link carries the token and nothing else, so this is the one path that reaches a
         // participant without a hat id.
         builder

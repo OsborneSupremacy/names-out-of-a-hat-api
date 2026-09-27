@@ -10,6 +10,8 @@ Phase 1 is built: an organizer can give an approximate date for the exchange. It
 
 One reminder to every participant a couple of weeks before the date, repeating who they drew. The repeat is what makes it worth sending: people lose the invitation, and "who did I get again?" otherwise goes to the organizer.
 
+Half of this exists now. `/invitation/{token}` shows a participant their invitation again, so a reminder could link to it rather than repeat the pick in the email body, and `GiftExchangeProvider.GetInvitationReminderAsync` already knows who has plainly read theirs.
+
 Hold it back until Phase 1 has shown what it does to complaint rates. Participants never signed up for anything, so every email they didn't expect is a chance for a spam report, and complaints count against the organizer's standing and against the sending reputation. Constraints if it goes ahead:
 
 - At most one reminder, and the organizer turns it on per exchange.
