@@ -207,36 +207,38 @@ function CopyBlocked({ names, onClose }: { names: string[]; onClose: () => void 
           </button>
         </div>
 
-        <div className="copy-warning" role="alert">
-          <p>
-            {one ? (
-              <>
-                <strong>{names[0]}</strong> isn't receiving emails from this app. Their email address
-                needs to be corrected before it can be used in a new gift exchange.
-              </>
-            ) : (
-              <>
-                Some people in this gift exchange aren't receiving emails from this app:{' '}
-                <strong>{formatNames(names)}</strong>. Their email addresses need to be corrected
-                before they can be used in a new gift exchange.
-              </>
-            )}
-          </p>
-          <p>
-            If you're sure {one ? 'the address is' : 'an address is'} correct, something beyond our
-            control is stopping mail from reaching it. Unfortunately, as much as we'd like to, we
-            can't use that address.
-          </p>
-        </div>
+        <div className="copy-blocked-body">
+          <div className="copy-warning" role="alert">
+            <p>
+              {one ? (
+                <>
+                  <strong>{names[0]}</strong> isn't receiving emails from this app. Their email address
+                  needs to be corrected before it can be used in a new gift exchange.
+                </>
+              ) : (
+                <>
+                  Some people in this gift exchange aren't receiving emails from this app:{' '}
+                  <strong>{formatNames(names)}</strong>. Their email addresses need to be corrected
+                  before they can be used in a new gift exchange.
+                </>
+              )}
+            </p>
+            <p>
+              If you're sure {one ? 'the address is' : 'an address is'} correct, something beyond our
+              control is stopping mail from reaching it. Unfortunately, as much as we'd like to, we
+              can't use that address.
+            </p>
+          </div>
 
-        <p className="modal-note">
-          You can correct an address from the participant list on this page.
-        </p>
+          <p className="modal-note">
+            You can correct an address from the participant list on this page.
+          </p>
 
-        <div className="modal-actions">
-          <button type="button" className="primary-button" onClick={onClose} autoFocus>
-            Close
-          </button>
+          <div className="modal-actions">
+            <button type="button" className="primary-button" onClick={onClose} autoFocus>
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>

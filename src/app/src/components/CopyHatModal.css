@@ -41,3 +41,9 @@
 .copy-warning p:last-child {
   margin-bottom: 0;
 }
+
+/* The blocked notice has no form around it, and the modal's body padding lives on
+   `.modal-content form`, so it supplies the same padding itself. */
+.copy-blocked-body {
+  padding: 1.5rem;
+}
