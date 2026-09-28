@@ -131,6 +131,25 @@ resource "aws_iam_role_policy" "giftexchange_app_sqs_policy" {
   })
 }
 
+# Read-only, one address at a time: adding a participant or correcting an address asks whether SES
+# has that address on the account suppression list. The action supports no resource-level
+# permissions, hence "*". Nothing here can add to or remove from the list.
+resource "aws_iam_role_policy" "giftexchange_app_ses_suppression_policy" {
+  name = "giftexchange-app-ses-suppression-policy"
+  role = aws_iam_role.giftexchange_app_exec_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ses:GetSuppressedDestination"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "giftexchange_app_comprehend_policy" {
   name = "giftexchange-app-comprehend-policy"
   role = aws_iam_role.giftexchange_app_exec_role.id

@@ -2,6 +2,7 @@
 using Amazon.Extensions.NETCore.Setup;
 using Amazon.Scheduler;
 using Amazon.SimpleEmail;
+using Amazon.SimpleEmailV2;
 using Amazon.SimpleNotificationService;
 using Amazon.SimpleSystemsManagement;
 using Amazon.AuroraDsql.Npgsql;
@@ -66,6 +67,7 @@ internal static class ServiceProviderBuilder
                 .AddAWSService<IAmazonComprehend>()
                 .AddAWSService<IAmazonSimpleSystemsManagement>()
                 .AddSingleton<IAmazonSimpleEmailService, AmazonSimpleEmailServiceClient>() // AddAWSService fails for SES
+                .AddSingleton<IAmazonSimpleEmailServiceV2, AmazonSimpleEmailServiceV2Client>() // likewise
                 // Measured, because this is the single largest thing a cold start does and the one
                 // the memory_size on this function was raised to pay for: the connector signs an
                 // IAM auth token and opens a verify-full TLS connection before the first query can
@@ -258,6 +260,7 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<LeavePageComposer>()
                 .AddSingleton<LeaveEmailCompositionService>()
                 .AddSingleton<DoNotAddService>()
+                .AddSingleton<ISuppressionListProvider, SuppressionListProvider>()
                 .AddSingleton<InvitationQueueHandlerService>()
                 .AddSingleton<DeliveryEventsService>()
                 .AddSingleton<UndeliverableInvitationsEmailCompositionService>()

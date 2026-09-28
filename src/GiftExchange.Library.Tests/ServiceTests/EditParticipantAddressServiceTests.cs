@@ -32,6 +32,8 @@ public class EditParticipantAddressServiceTests
 
     private readonly List<GiftExchangeEmailRequest> _queued = [];
 
+    private readonly FakeSuppressionListProvider _suppressionList = new();
+
     private readonly GiftExchangeProvider _provider;
 
     private readonly IDbContextFactory<GiftExchangeDbContext> _contextFactory;
@@ -73,7 +75,8 @@ public class EditParticipantAddressServiceTests
             _queue,
             _throttle,
             new DoNotAddService(_provider),
-            serviceProvider.GetRequiredService<OrganizerStandingChecker>());
+            serviceProvider.GetRequiredService<OrganizerStandingChecker>(),
+            _suppressionList);
     }
 
     [Fact]
@@ -279,6 +282,27 @@ public class EditParticipantAddressServiceTests
         // assert: the invitation asks the reader to keep a secret everybody has now been told.
         result.Value.MessageType.Should().Be(EmailMessageType.Completion);
         _queued.Should().ContainSingle().Which.MessageType.Should().Be(EmailMessageType.Completion);
+    }
+
+    /// <summary>
+    /// A correction exists to make mail arrive, so one that SES will not deliver to is no
+    /// correction: refused, and nothing resent into the same hole.
+    /// </summary>
+    [Fact]
+    public async Task AnAddressSesSuppresses_IsRefusedAndNothingIsSent()
+    {
+        // arrange
+        var exchange = await SeedAsync(HatStatus.InvitationsSent);
+        _suppressionList.Suppress("unreachable@example.com");
+
+        // act
+        var result = await _sut.EditParticipantAddressAsync(Request(exchange, "unreachable@example.com"));
+
+        // assert
+        result.IsFaulted.Should().BeTrue();
+        result.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        _queued.Should().BeEmpty();
+        _throttle.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]

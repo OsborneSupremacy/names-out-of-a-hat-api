@@ -15,6 +15,8 @@ public class AddParticipantTests
 
     private readonly GiftExchangeProvider _provider;
 
+    private readonly FakeSuppressionListProvider _suppressionList = new();
+
     public AddParticipantTests(PostgresFixture dbFixture)
     {
         DotEnv.Load();
@@ -27,6 +29,7 @@ public class AddParticipantTests
             .AddBusinessServices()
             .AddSingleton(contextFactory)
             .AddSingleton<IContentModerationService, FakeContentModerationService>()
+            .AddSingleton<ISuppressionListProvider>(_suppressionList)
             .BuildServiceProvider();
 
         _jsonService = serviceProvider.GetRequiredService<JsonService>();
@@ -171,6 +174,33 @@ public class AddParticipantTests
     /// they are in, so refusing a second Sam here would be refusing something about somebody else's
     /// exchanges too. The address is what tells them apart.
     /// </summary>
+    /// <summary>
+    /// An address SES will not deliver to is refused before it is written, with a message that
+    /// covers both a typo and an address that is right but unreachable.
+    /// </summary>
+    [Fact]
+    public async Task AddParticipant_AnAddressSesSuppresses_UnprocessableAndNotAdded()
+    {
+        // arrange
+        var hat = await _testDataService.CreateTestHatAsync();
+        var participant = _requestFaker.Generate() with { OrganizerEmail = hat.Organizer.Email, HatId = hat.Id };
+
+        // Typed differently from how it is held, as an organizer might.
+        _suppressionList.Suppress(participant.Email.ToUpperInvariant());
+
+        // act
+        var response = await _sut.FunctionHandler(
+            _jsonService.SerializeDefault(participant).ToApiGatewayProxyRequest(),
+            _context);
+
+        // assert
+        response.StatusCode.Should().Be((int)HttpStatusCode.UnprocessableEntity);
+        response.Body.Should().Contain("Please check it for typos");
+
+        var participants = await _provider.GetParticipantsAsync(hat.Organizer.Email, hat.Id);
+        participants.Should().NotContain(p => p.Person.Email == participant.Email);
+    }
+
     [Fact]
     public async Task AddParticipant_SameNameDifferentEmail_IsAccepted()
     {

@@ -53,6 +53,8 @@ internal class EditParticipantAddressService : IApiGatewayHandler
 
     private readonly OrganizerStandingChecker _organizerStandingChecker;
 
+    private readonly ISuppressionListProvider _suppressionListProvider;
+
     public EditParticipantAddressService(
         ILogger<EditParticipantAddressService> logger,
         ApiGatewayAdapter adapter,
@@ -63,7 +65,8 @@ internal class EditParticipantAddressService : IApiGatewayHandler
         IEmailQueue emailQueue,
         IReplyThrottleProvider throttleProvider,
         DoNotAddService doNotAddService,
-        OrganizerStandingChecker organizerStandingChecker
+        OrganizerStandingChecker organizerStandingChecker,
+        ISuppressionListProvider suppressionListProvider
     )
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -76,6 +79,7 @@ internal class EditParticipantAddressService : IApiGatewayHandler
         _throttleProvider = throttleProvider ?? throw new ArgumentNullException(nameof(throttleProvider));
         _doNotAddService = doNotAddService ?? throw new ArgumentNullException(nameof(doNotAddService));
         _organizerStandingChecker = organizerStandingChecker ?? throw new ArgumentNullException(nameof(organizerStandingChecker));
+        _suppressionListProvider = suppressionListProvider ?? throw new ArgumentNullException(nameof(suppressionListProvider));
     }
 
     public Task<APIGatewayProxyResponse> FunctionHandler(
@@ -130,6 +134,18 @@ internal class EditParticipantAddressService : IApiGatewayHandler
             return new Result<EditParticipantAddressResponse>(
                 new InvalidOperationException(DoNotAddService.RefusalMessage),
                 HttpStatusCode.Forbidden);
+
+        // For the same reason as the refusal above, and more pressingly: this endpoint exists to
+        // fix an address that did not work, and accepting a correction that cannot work either
+        // would resend into the same hole while telling the organizer it had been fixed.
+        var suppressed = await _suppressionListProvider
+            .IsSuppressedAsync(request.NewEmail)
+            .ConfigureAwait(false);
+
+        if (suppressed)
+            return new Result<EditParticipantAddressResponse>(
+                new InvalidOperationException(SuppressionListProvider.RefusalMessage),
+                HttpStatusCode.UnprocessableEntity);
 
         // Decided from the status as it stands, before anything is written. Nothing below changes
         // the hat's status, so reading it first is only about keeping the decision in one place.

@@ -12,12 +12,15 @@ internal class AddParticipantService : IApiGatewayHandler
 
     private readonly DoNotAddService _doNotAddService;
 
+    private readonly ISuppressionListProvider _suppressionListProvider;
+
     public AddParticipantService(
         ILogger<AddParticipantService> logger,
         ApiGatewayAdapter adapter,
         HatPreconditionValidator hatPreconditionValidator,
         GiftExchangeProvider giftExchangeProvider,
-        DoNotAddService doNotAddService
+        DoNotAddService doNotAddService,
+        ISuppressionListProvider suppressionListProvider
         )
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -25,6 +28,7 @@ internal class AddParticipantService : IApiGatewayHandler
         _giftExchangeProvider = giftExchangeProvider ?? throw new ArgumentNullException(nameof(giftExchangeProvider));
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         _doNotAddService = doNotAddService ?? throw new ArgumentNullException(nameof(doNotAddService));
+        _suppressionListProvider = suppressionListProvider ?? throw new ArgumentNullException(nameof(suppressionListProvider));
     }
 
     public Task<APIGatewayProxyResponse> FunctionHandler(
@@ -83,6 +87,18 @@ internal class AddParticipantService : IApiGatewayHandler
             return new Result<StatusCodeOnlyResponse>(
                 new InvalidOperationException(DoNotAddService.RefusalMessage),
                 HttpStatusCode.Forbidden);
+
+        // After the refusal, which says the more specific thing about somebody who complained --
+        // they are on both lists. UnprocessableEntity rather than Forbidden: nobody has refused
+        // anything, and the fix is a different address, which the organizer can supply.
+        var suppressed = await _suppressionListProvider
+            .IsSuppressedAsync(request.Email)
+            .ConfigureAwait(false);
+
+        if (suppressed)
+            return new Result<StatusCodeOnlyResponse>(
+                new InvalidOperationException(SuppressionListProvider.RefusalMessage),
+                HttpStatusCode.UnprocessableEntity);
 
         // Last of the refusals, after every one that is about this request in particular. A full
         // hat is a fact about the exchange rather than anything wrong with the person being added,
