@@ -53,6 +53,8 @@ internal class EditParticipantAddressService : IApiGatewayHandler
 
     private readonly OrganizerStandingChecker _organizerStandingChecker;
 
+    private readonly OrganizerSendLimiter _organizerSendLimiter;
+
     private readonly ISuppressionListProvider _suppressionListProvider;
 
     public EditParticipantAddressService(
@@ -66,7 +68,8 @@ internal class EditParticipantAddressService : IApiGatewayHandler
         IReplyThrottleProvider throttleProvider,
         DoNotAddService doNotAddService,
         OrganizerStandingChecker organizerStandingChecker,
-        ISuppressionListProvider suppressionListProvider
+        ISuppressionListProvider suppressionListProvider,
+        OrganizerSendLimiter organizerSendLimiter
     )
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -80,6 +83,7 @@ internal class EditParticipantAddressService : IApiGatewayHandler
         _doNotAddService = doNotAddService ?? throw new ArgumentNullException(nameof(doNotAddService));
         _organizerStandingChecker = organizerStandingChecker ?? throw new ArgumentNullException(nameof(organizerStandingChecker));
         _suppressionListProvider = suppressionListProvider ?? throw new ArgumentNullException(nameof(suppressionListProvider));
+        _organizerSendLimiter = organizerSendLimiter ?? throw new ArgumentNullException(nameof(organizerSendLimiter));
     }
 
     public Task<APIGatewayProxyResponse> FunctionHandler(
@@ -168,6 +172,22 @@ internal class EditParticipantAddressService : IApiGatewayHandler
                 return new Result<EditParticipantAddressResponse>(
                     new InvalidOperationException(standing.RefusalMessage),
                     standing.RefusalStatusCode);
+
+            // A new address is a new person reached, and the resend is otherwise a way around the
+            // limit on the invitations themselves: one correction at a time, to a fresh stranger
+            // each time.
+            var limit = await _organizerSendLimiter
+                .CheckAsync(new CheckOrganizerSendLimitRequest
+                {
+                    OrganizerEmail = request.OrganizerEmail,
+                    RecipientEmails = [request.NewEmail]
+                })
+                .ConfigureAwait(false);
+
+            if (!limit.WithinLimit)
+                return new Result<EditParticipantAddressResponse>(
+                    new InvalidOperationException(limit.RefusalMessage),
+                    limit.RefusalStatusCode);
 
             var participantIds = await _giftExchangeProvider
                 .GetParticipantIdsByEmailAsync(request.HatId)
@@ -303,6 +323,16 @@ internal class EditParticipantAddressService : IApiGatewayHandler
             if (!string.IsNullOrWhiteSpace(leaveToken))
                 unsubscribeUrl = EmailCompositionService.LeaveUrlFor(leaveToken);
         }
+
+        // Before the queue, for the reason EnqueueInvitationsService records its sends first.
+        await _giftExchangeProvider
+            .RecordOrganizerSendsAsync(new RecordOrganizerSendsRequest
+            {
+                OrganizerEmail = request.OrganizerEmail,
+                Recipients = [new OrganizerSendRecipient { ParticipantId = change.ParticipantId, Email = request.NewEmail }],
+                SentAt = DateTimeOffset.UtcNow
+            })
+            .ConfigureAwait(false);
 
         await _emailQueue.EnqueueAsync(new GiftExchangeEmailRequest
         {

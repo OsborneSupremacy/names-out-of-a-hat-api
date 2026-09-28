@@ -1529,3 +1529,119 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: UPDATE gift_idea_token SET proves_invitation_seen = NULL, first_used_at = NULL
+
+  - changeSet:
+      id: organizer_send--0001
+      author: ben
+      comment: >
+        Every address an organizer's exchange mails, remembered against that organizer past the
+        exchange's deletion. Caps how many distinct people one organizer can mail, lets a complaint
+        or a bounce find its organizer after the exchange is gone, and gives the bounce rate a
+        denominator. The daily sweep drops rows older than the standing window.
+      changes:
+        - sqlFile:
+            path: tables/organizer_send--0001.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: DROP TABLE organizer_send
+
+  - changeSet:
+      id: idx_organizer_send_organizer--0001
+      author: ben
+      comment: >
+        The send limit and the standing check both ask how many people one organizer has mailed
+        inside a window. Ordered by sent_at because the question is always over a window.
+      changes:
+        - sql:
+            sql: CREATE INDEX ASYNC idx_organizer_send_organizer ON organizer_send (organizer_email_normalized, sent_at)
+      rollback:
+        - sql:
+            sql: DROP INDEX idx_organizer_send_organizer
+
+  - changeSet:
+      id: idx_organizer_send_participant--0001
+      author: ben
+      comment: >
+        A complaint or a bounce names a participant and nothing else, and this is how it finds the
+        organizer once the participant row is gone.
+      changes:
+        - sql:
+            sql: CREATE INDEX ASYNC idx_organizer_send_participant ON organizer_send (participant_id)
+      rollback:
+        - sql:
+            sql: DROP INDEX idx_organizer_send_participant
+
+  - changeSet:
+      id: idx_organizer_send_sent_at--0001
+      author: ben
+      comment: >
+        The daily sweep deletes by age across every organizer, which idx_organizer_send_organizer
+        cannot answer without a scan.
+      changes:
+        - sql:
+            sql: CREATE INDEX ASYNC idx_organizer_send_sent_at ON organizer_send (sent_at)
+      rollback:
+        - sql:
+            sql: DROP INDEX idx_organizer_send_sent_at
+
+  - changeSet:
+      id: organizer_bounce--0001
+      author: ben
+      comment: >
+        Hard bounces remembered against the organizer whose exchange drew them, so that an
+        organizer mailing addresses that do not exist can be stopped before SES pauses the account
+        every organizer shares. participant_email_delivery records the same bounces, but its rows go
+        with the exchange.
+      changes:
+        - sqlFile:
+            path: tables/organizer_bounce--0001.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: DROP TABLE organizer_bounce
+
+  - changeSet:
+      id: uq_organizer_bounce--0001
+      author: ben
+      comment: >
+        One row per address per organizer, for the reasons uq_organizer_complaint gives: the
+        standing check counts distinct addresses, and a redelivered event becomes a no-op.
+      changes:
+        - sql:
+            sql: CREATE UNIQUE INDEX ASYNC uq_organizer_bounce ON organizer_bounce (organizer_email_normalized, email_normalized)
+      rollback:
+        - sql:
+            sql: DROP INDEX uq_organizer_bounce
+
+  - changeSet:
+      id: giftexchange_user--0020
+      author: ben
+      comment: >
+        SELECT, INSERT and DELETE on organizer_send: see the file. A separate changeset rather than
+        an addition to an earlier grant, whose checksum covers the tables it named when it ran.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0020.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: REVOKE SELECT, INSERT, DELETE ON organizer_send FROM giftexchange_user
+
+  - changeSet:
+      id: giftexchange_user--0021
+      author: ben
+      comment: >
+        SELECT and INSERT on organizer_bounce, and deliberately nothing else, as for
+        organizer_complaint.
+      changes:
+        - sqlFile:
+            path: roles/giftexchange_user--0021.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sql:
+            sql: REVOKE SELECT, INSERT ON organizer_bounce FROM giftexchange_user

@@ -105,6 +105,9 @@ internal class DeliveryEventsService
         if (status == DeliveryStatus.Complained)
             await AttributeComplaintAsync(notification, participantId).ConfigureAwait(false);
 
+        if (status == DeliveryStatus.Bounced)
+            await AttributeBounceAsync(notification, participantId).ConfigureAwait(false);
+
         var written = await _giftExchangeProvider
             .RecordDeliveryEventAsync(new ParticipantEmailDelivery
             {
@@ -190,6 +193,37 @@ internal class DeliveryEventsService
                     ParticipantId = participantId,
                     Email = email,
                     ComplainedAt = OccurredAtOf(notification, DeliveryStatus.Complained)
+                })
+                .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Remembers a hard bounce against the organizer of the exchange the message came from.
+    /// </summary>
+    /// <remarks>
+    /// Permanent bounces only. A transient one is a full mailbox or a receiving server having a bad
+    /// minute, and says nothing about whether the organizer should have been mailing that address.
+    /// Throws on failure for the reason <see cref="AttributeComplaintAsync"/> does.
+    /// </remarks>
+    private async Task AttributeBounceAsync(SesDeliveryEvent notification, Guid participantId)
+    {
+        if (notification.Bounce is not { } bounce
+            || !string.Equals(bounce.BounceType.TrimNullSafe(), "Permanent", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // Null rather than empty when the field is absent, as for complainants.
+        var bounced = (bounce.BouncedRecipients ?? [])
+            .Select(recipient => recipient.EmailAddress)
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var email in bounced)
+            await _giftExchangeProvider
+                .RecordOrganizerBounceAsync(new RecordOrganizerBounceRequest
+                {
+                    ParticipantId = participantId,
+                    Email = email,
+                    BouncedAt = OccurredAtOf(notification, DeliveryStatus.Bounced)
                 })
                 .ConfigureAwait(false);
     }

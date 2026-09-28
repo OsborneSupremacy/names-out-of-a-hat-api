@@ -60,6 +60,10 @@ public sealed class GiftExchangeDbContext : DbContext
 
     public DbSet<OrganizerComplaintEntity> OrganizerComplaints => Set<OrganizerComplaintEntity>();
 
+    public DbSet<OrganizerBounceEntity> OrganizerBounces => Set<OrganizerBounceEntity>();
+
+    public DbSet<OrganizerSendEntity> OrganizerSends => Set<OrganizerSendEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(GiftExchangeDbContext).Assembly);
 }

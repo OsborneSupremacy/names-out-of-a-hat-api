@@ -47,7 +47,7 @@ public class ExchangeDateSweepHandler
             var result = await service.ExecuteAsync(DateTimeOffset.UtcNow).ConfigureAwait(false);
 
             context.Logger.LogInformation(
-                $"Exchange date sweep finished. Close prompts sent: {result.ClosePromptsSent}; hats deleted: {result.HatsPurged}.");
+                $"Exchange date sweep finished. Close prompts sent: {result.ClosePromptsSent}; hats deleted: {result.HatsPurged}; sends purged: {result.SendsPurged}.");
         }
         catch (Exception exception)
         {

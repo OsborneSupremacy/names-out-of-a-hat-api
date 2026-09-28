@@ -143,6 +143,123 @@ public class OrganizerStandingCheckerTests
         standing.MaySend.Should().BeTrue();
     }
 
+    /// <summary>
+    /// The case bounces are counted for: most of a list the organizer did not collect does not
+    /// exist.
+    /// </summary>
+    [Fact]
+    public async Task EnoughOfWhatWasSentBouncing_StopsTheOrganizerSending()
+    {
+        // arrange
+        var organizer = Organizer();
+        var mailed = Addresses(40);
+
+        await SentAsync(organizer, mailed);
+        await BounceAsync(organizer, [.. mailed.Take(OrganizerStandingChecker.SuspendAtBounces)]);
+
+        // act
+        var standing = await _sut.CheckAsync(organizer);
+
+        // assert: five of forty is twelve and a half percent.
+        standing.MaySend.Should().BeFalse();
+        standing.RefusalStatusCode.Should().Be(HttpStatusCode.Forbidden);
+        standing.RefusalMessage.Should().Be(OrganizerStandingChecker.BounceRefusalMessage);
+    }
+
+    /// <summary>
+    /// A large exchange collects typos by being large. Judged as a share, the same number that
+    /// stops somebody mailing forty does not stop somebody mailing two hundred.
+    /// </summary>
+    [Fact]
+    public async Task TheSameBouncesAcrossMoreMail_DoNotStopTheOrganizer()
+    {
+        // arrange
+        var organizer = Organizer();
+        var mailed = Addresses(200);
+
+        await SentAsync(organizer, mailed);
+        await BounceAsync(organizer, [.. mailed.Take(OrganizerStandingChecker.SuspendAtBounces)]);
+
+        // act
+        var standing = await _sut.CheckAsync(organizer);
+
+        // assert
+        standing.MaySend.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// One typo in a family of eight is twelve percent, and says nothing about the organizer.
+    /// </summary>
+    [Fact]
+    public async Task AHighShareOfVeryFewBounces_DoesNotStopTheOrganizer()
+    {
+        // arrange
+        var organizer = Organizer();
+        var mailed = Addresses(8);
+
+        await SentAsync(organizer, mailed);
+        await BounceAsync(organizer, [.. mailed.Take(OrganizerStandingChecker.SuspendAtBounces - 1)]);
+
+        // act
+        var standing = await _sut.CheckAsync(organizer);
+
+        // assert
+        standing.MaySend.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Mail sent before the ledger existed has bounces and no sends to divide them by. That is
+    /// evidence of bounces and not of a rate above one, and it must not throw.
+    /// </summary>
+    [Fact]
+    public async Task BouncesWithNoSendsBehindThem_AreJudgedAsIfEveryoneMailedBounced()
+    {
+        // arrange
+        var organizer = Organizer();
+        await BounceAsync(organizer, Addresses(OrganizerStandingChecker.SuspendAtBounces));
+
+        // act
+        var standing = await _sut.CheckAsync(organizer);
+
+        // assert
+        standing.MaySend.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task BouncesOlderThanTheWindow_NoLongerCount()
+    {
+        // arrange
+        var organizer = Organizer();
+        var outside = DateTimeOffset.UtcNow.Subtract(OrganizerStandingChecker.Window).AddDays(-1);
+
+        await BounceAsync(organizer, Addresses(OrganizerStandingChecker.SuspendAtBounces), outside);
+
+        // act
+        var standing = await _sut.CheckAsync(organizer);
+
+        // assert
+        standing.MaySend.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// An organizer both reported and bouncing is told about the reports, which are the stronger
+    /// thing and the one they are more likely to be able to do something about.
+    /// </summary>
+    [Fact]
+    public async Task ComplaintsAndBouncesTogether_AreReportedAsComplaints()
+    {
+        // arrange
+        var organizer = Organizer();
+        await ComplainAsync(organizer, OrganizerStandingChecker.SuspendAtComplaints);
+        await BounceAsync(organizer, Addresses(OrganizerStandingChecker.SuspendAtBounces));
+
+        // act
+        var standing = await _sut.CheckAsync(organizer);
+
+        // assert
+        standing.RefusalMessage.Should().Be(OrganizerStandingChecker.RefusalMessage);
+    }
+
     private static string Organizer() => $"organizer-{Guid.NewGuid():N}@example.com";
 
     private static ImmutableList<string> Addresses(int count) =>
@@ -181,6 +298,37 @@ public class OrganizerStandingCheckerTests
             OrganizerEmailNormalized = organizer,
             EmailNormalized = email,
             CreatedAt = DateTimeOffset.UtcNow.AddDays(-1)
+        }));
+
+        await context.SaveChangesAsync();
+    }
+
+    private async Task SentAsync(string organizer, ImmutableList<string> emails)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        context.OrganizerSends.AddRange(emails.Select(email => new OrganizerSendEntity
+        {
+            OrganizerSendId = Guid.CreateVersion7(),
+            ParticipantId = Guid.NewGuid(),
+            OrganizerEmailNormalized = organizer,
+            EmailNormalized = email,
+            SentAt = DateTimeOffset.UtcNow.AddDays(-2)
+        }));
+
+        await context.SaveChangesAsync();
+    }
+
+    private async Task BounceAsync(string organizer, ImmutableList<string> emails, DateTimeOffset? bouncedAt = null)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        context.OrganizerBounces.AddRange(emails.Select(email => new OrganizerBounceEntity
+        {
+            OrganizerBounceId = Guid.CreateVersion7(),
+            OrganizerEmailNormalized = organizer,
+            EmailNormalized = email,
+            BouncedAt = bouncedAt ?? DateTimeOffset.UtcNow.AddDays(-1)
         }));
 
         await context.SaveChangesAsync();

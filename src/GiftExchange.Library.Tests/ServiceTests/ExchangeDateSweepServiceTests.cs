@@ -1,6 +1,7 @@
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
 using GiftExchange.Library.Contexts;
+using GiftExchange.Library.Entities;
 using Microsoft.Extensions.Logging;
 using MimeKit;
 using NSubstitute;
@@ -183,6 +184,53 @@ public class ExchangeDateSweepServiceTests
         // assert
         (await HatExistsAsync(hat.HatId)).Should().BeTrue();
     }
+
+    /// <summary>
+    /// Past the standing window a ledger row judges nobody, and it is a stranger's address kept
+    /// after the exchange that held it was deleted.
+    /// </summary>
+    [Fact]
+    public async Task SendsOlderThanTheStandingWindow_AreDroppedAndNewerOnesKept()
+    {
+        // arrange
+        var organizer = $"organizer-{Guid.NewGuid():N}@example.com";
+        var window = OrganizerStandingChecker.Window;
+
+        await using (var context = await _contextFactory.CreateDbContextAsync())
+        {
+            context.OrganizerSends.AddRange(
+                Send(organizer, "old@example.com", Now.Subtract(window).AddDays(-1)),
+                Send(organizer, "recent@example.com", Now.Subtract(window).AddDays(1)));
+
+            await context.SaveChangesAsync();
+        }
+
+        // act
+        var result = await _sut.ExecuteAsync(Now);
+
+        // assert
+        result.SendsPurged.Should().BeGreaterThanOrEqualTo(1);
+
+        await using var check = await _contextFactory.CreateDbContextAsync();
+
+        var remaining = await check.OrganizerSends
+            .AsNoTracking()
+            .Where(send => send.OrganizerEmailNormalized == organizer)
+            .Select(send => send.EmailNormalized)
+            .ToListAsync();
+
+        remaining.Should().BeEquivalentTo(["recent@example.com"]);
+    }
+
+    private static OrganizerSendEntity Send(string organizer, string email, DateTimeOffset sentAt) =>
+        new()
+        {
+            OrganizerSendId = Guid.CreateVersion7(),
+            ParticipantId = Guid.NewGuid(),
+            OrganizerEmailNormalized = organizer,
+            EmailNormalized = email,
+            SentAt = sentAt
+        };
 
     private async Task<HatDataModel> SeedAsync(DateOnly exchangeDate, string status)
     {

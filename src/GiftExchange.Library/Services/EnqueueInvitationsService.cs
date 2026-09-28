@@ -17,6 +17,8 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
 
     private readonly OrganizerStandingChecker _organizerStandingChecker;
 
+    private readonly OrganizerSendLimiter _organizerSendLimiter;
+
     public EnqueueInvitationsService(
         GiftExchangeProvider giftExchangeProvider,
         ApiGatewayAdapter adapter,
@@ -24,7 +26,8 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
         EmailCompositionService emailCompositionService,
         IEmailQueue emailQueue,
         ISchedulerService schedulerService,
-        OrganizerStandingChecker organizerStandingChecker
+        OrganizerStandingChecker organizerStandingChecker,
+        OrganizerSendLimiter organizerSendLimiter
         )
     {
         _giftExchangeProvider = giftExchangeProvider ?? throw new ArgumentNullException(nameof(giftExchangeProvider));
@@ -35,6 +38,7 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
         _emailQueue = emailQueue ?? throw new ArgumentNullException(nameof(emailQueue));
         _schedulerService = schedulerService ?? throw new ArgumentNullException(nameof(schedulerService));
         _organizerStandingChecker = organizerStandingChecker ?? throw new ArgumentNullException(nameof(organizerStandingChecker));
+        _organizerSendLimiter = organizerSendLimiter ?? throw new ArgumentNullException(nameof(organizerSendLimiter));
     }
 
     // The address is read from the request context here rather than being carried on the request
@@ -78,6 +82,21 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
 
         var hat = hatPreconditionResult.Hat;
 
+        // After standing, because a suspended organizer is better told that than a time to come
+        // back at which they will only be refused again. Before any token, for the same reason.
+        var limit = await _organizerSendLimiter
+            .CheckAsync(new CheckOrganizerSendLimitRequest
+            {
+                OrganizerEmail = request.OrganizerEmail,
+                RecipientEmails = [.. hat.Participants.Select(participant => participant.Person.Email)]
+            })
+            .ConfigureAwait(false);
+
+        if (!limit.WithinLimit)
+            return new Result<StatusCodeOnlyResponse>(
+                new InvalidOperationException(limit.RefusalMessage),
+                limit.RefusalStatusCode);
+
         // Before anything is queued, because the token has to be inside the invitation. Issued here
         // rather than when a participant is added: this is the first moment there is an email going
         // to them to carry it, and a token nobody has been told is only a row.
@@ -97,6 +116,24 @@ internal class EnqueueInvitationsService : IApiGatewayHandler
 
         var participantIds = await _giftExchangeProvider
             .GetParticipantIdsByEmailAsync(request.HatId)
+            .ConfigureAwait(false);
+
+        // Before anything is queued, so no complaint or bounce can arrive for a message the ledger
+        // has not heard of. See RecordOrganizerSendsAsync for what a failure after this costs.
+        await _giftExchangeProvider
+            .RecordOrganizerSendsAsync(new RecordOrganizerSendsRequest
+            {
+                OrganizerEmail = request.OrganizerEmail,
+                Recipients =
+                [
+                    .. participantIds.Select(pair => new OrganizerSendRecipient
+                    {
+                        ParticipantId = pair.Value,
+                        Email = pair.Key
+                    })
+                ],
+                SentAt = DateTimeOffset.UtcNow
+            })
             .ConfigureAwait(false);
 
         var enqueueTasks = new List<Task>();

@@ -155,6 +155,7 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<HatPreconditionValidator>()
                 .AddSingleton<HatCreationLimiter>()
                 .AddSingleton<OrganizerStandingChecker>()
+                .AddSingleton<OrganizerSendLimiter>()
 
                 .AddKeyedSingleton<IApiGatewayHandler, RequestMagicLinkService>("post/auth/requestlink")
                 .AddKeyedSingleton<IApiGatewayHandler, RedeemMagicLinkService>("post/auth/redeem")

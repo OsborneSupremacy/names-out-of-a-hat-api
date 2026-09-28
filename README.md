@@ -247,11 +247,23 @@ The rule has to hold on the way in as well, or it's decoration. Adding somebody 
 
 An organizer can start at most five gift exchanges in any 24 hours, and can have at most five that aren't `CLOSED` at any one time. Copying a finished exchange counts toward both, the same as creating one from scratch, because a copy writes a hat and a full set of participants, and exempting it would leave the limits with a door right next to them.
 
-These aren't what stops spam. Creating an exchange sends no mail and needs a signed-in organizer, so the mail-sending paths have their own throttles. The limits cap how much one account can pile into the database, whether from a script or a client stuck retrying, and they're set at a number no real organizer should reach.
+These aren't what stops spam, and they aren't meant to be. Creating an exchange sends no mail, and deleting one gives its slot back, so on their own they'd let an organizer create, send, delete and repeat without end. What stops that is on the send path; see the next section. These limits cap how much one account can pile into the database, whether from a script or a client stuck retrying, and they're set at a number no real organizer should reach.
 
 Neither limit makes the other redundant. The cool-off before closing is minutes, so an open limit alone could be walked around by closing as you go. A daily limit alone would let an account keep adding five a day indefinitely. With both, how many exchanges an organizer has open is bounded, and so is how fast they can cycle through new ones.
 
 Hitting the open limit is a 409, and the message says to close or delete one. Hitting the daily limit is a 429. Its window rolls rather than resetting at midnight, which avoids deciding whose midnight it is, so the refusal gives a time in UTC instead of saying "tomorrow". When both apply, the open limit is the one reported, because waiting won't fix it. Both counts come from the exchanges the organizer currently owns, so deleting one gives the slot back. Someone who deletes a mistake and makes it again hasn't piled anything up. Two requests that arrive together can both get through at the edge, and that's left alone on purpose: the point is to stop hundreds, and serializing creation isn't worth it to tell five from six.
+
+### Sending is counted by who was mailed, and the count outlives the exchange
+
+Every invitation writes a row to `organizer_send` before it's queued: which organizer, which address, which participant. Correcting an address after the send writes one too. Deleting an exchange doesn't remove these rows, and neither does an organizer deleting their data. The daily sweep drops them once they're older than the 90-day window they're judged over, because past that point they do no work and are only a stranger's address kept after the exchange was deleted. The organizer's own address is never written, since mailing yourself isn't reaching anyone.
+
+The ledger does three jobs.
+
+It caps how many distinct people one organizer can mail: 100 in 24 hours and 250 in 7 days, both rolling. That turns create, send, delete, repeat from endless into two exchanges' worth. Counting distinct addresses is what keeps it fair. Re-sending to last year's family costs nothing new, while mailing a fresh list every hour runs out by lunchtime. A send is allowed or refused whole, never half an exchange, and the refusal is a 429 that gives a UTC time. It doesn't suggest deleting anything, because deleting doesn't help.
+
+It lets a complaint or a bounce find its organizer after the exchange is gone. An SES event names a participant and nothing else, and until the ledger existed the only route from a participant to an organizer ran through the participant row. So an organizer who sent and then deleted straight away left every complaint that arrived later with nobody to hold responsible.
+
+And it gives bounces a denominator. The standing check that sits in front of every send path stops an organizer at 3 spam complaints, or at 5 people between complaints and "never add me again" requests, over 90 days. Those are absolute counts, which is safe because the cap already bounds how many people an organizer can reach. Hard bounces are judged as a share instead: an organizer is paused once at least 5 distinct addresses have bounced and those make up at least 10% of the people they mailed. That's SES's own threshold for pausing the whole account, applied to one organizer. A share is fair because a large exchange collects typos just by being large, and the minimum of 5 means one wrong address in a family of eight doesn't trip it. Transient bounces, like a full mailbox, don't count. The complaint and bounce records outlive the exchange just as the ledger does, and nothing in the application can clear them. The pause lifts when they age out of the window.
 
 ### User content is moderated, and fails closed
 

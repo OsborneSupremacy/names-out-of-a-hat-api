@@ -6,4 +6,7 @@ internal record ExchangeDateSweepResponse
     public required int ClosePromptsSent { get; init; }
 
     public required int HatsPurged { get; init; }
+
+    /// <summary>Send ledger rows dropped for being older than the standing window.</summary>
+    public required int SendsPurged { get; init; }
 }

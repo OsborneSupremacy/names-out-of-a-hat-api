@@ -76,7 +76,8 @@ public class EditParticipantAddressServiceTests
             _throttle,
             new DoNotAddService(_provider),
             serviceProvider.GetRequiredService<OrganizerStandingChecker>(),
-            _suppressionList);
+            _suppressionList,
+            serviceProvider.GetRequiredService<OrganizerSendLimiter>());
     }
 
     [Fact]
@@ -387,6 +388,49 @@ public class EditParticipantAddressServiceTests
     }
 
     /// <summary>
+    /// A corrected address is a new person reached, and the ledger has to know about it before the
+    /// resend goes, for whatever SES says about it afterwards.
+    /// </summary>
+    [Fact]
+    public async Task AResend_IsRememberedAgainstTheOrganizer()
+    {
+        // arrange
+        var exchange = await SeedAsync(HatStatus.InvitationsSent);
+
+        // act
+        await _sut.EditParticipantAddressAsync(Request(exchange, "Fixed@Example.com"));
+
+        // assert
+        var send = (await SendsAsync(exchange.OrganizerEmail)).Should().ContainSingle().Subject;
+        send.ParticipantId.Should().Be(exchange.TargetParticipantId);
+        send.EmailNormalized.Should().Be("fixed@example.com");
+    }
+
+    /// <summary>
+    /// Otherwise one correction at a time, each to a fresh stranger, is a way around the limit on
+    /// the invitations themselves.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheOrganizerHasMailedTheirLimit_NothingChangesAndNothingIsSent()
+    {
+        // arrange
+        var exchange = await SeedAsync(HatStatus.InvitationsSent);
+        await SentAsync(exchange.OrganizerEmail, OrganizerSendLimiter.DailyLimit);
+
+        // act
+        var result = await _sut.EditParticipantAddressAsync(Request(exchange, "fixed@example.com"));
+
+        // assert
+        result.IsFaulted.Should().BeTrue();
+        result.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        _queued.Should().BeEmpty();
+
+        await AddressShouldBeAsync(exchange, exchange.TargetEmail);
+        await _throttle.DidNotReceive()
+            .TryReserveAddressChangeSlotAsync(Arg.Any<ReserveAddressChangeSlotRequest>());
+    }
+
+    /// <summary>
     /// Nothing is sent before invitations go out, so a suspended organizer can still fix a typo.
     /// </summary>
     [Fact]
@@ -457,6 +501,36 @@ public class EditParticipantAddressServiceTests
     }
 
     /// <summary>Three participants in a ring, so every pick resolves to a real name.</summary>
+    private async Task<List<OrganizerSendEntity>> SendsAsync(string organizerEmail)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var normalized = organizerEmail.Trim().ToLowerInvariant();
+
+        return await context.OrganizerSends
+            .AsNoTracking()
+            .Where(send => send.OrganizerEmailNormalized == normalized)
+            .ToListAsync();
+    }
+
+    private async Task SentAsync(string organizerEmail, int count)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        context.OrganizerSends.AddRange(Enumerable
+            .Range(0, count)
+            .Select(_ => new OrganizerSendEntity
+            {
+                OrganizerSendId = Guid.CreateVersion7(),
+                ParticipantId = Guid.NewGuid(),
+                OrganizerEmailNormalized = organizerEmail.Trim().ToLowerInvariant(),
+                EmailNormalized = $"{Guid.NewGuid():N}@example.com",
+                SentAt = DateTimeOffset.UtcNow.AddHours(-1)
+            }));
+
+        await context.SaveChangesAsync();
+    }
+
     private async Task<Exchange> SeedAsync(string status)
     {
         var hat = _hatFaker.Generate();

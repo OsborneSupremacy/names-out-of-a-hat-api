@@ -65,7 +65,8 @@ public class EnqueueInvitationsServiceTests
             new EmailCompositionService(),
             _queue,
             _scheduler,
-            serviceProvider.GetRequiredService<OrganizerStandingChecker>());
+            serviceProvider.GetRequiredService<OrganizerStandingChecker>(),
+            serviceProvider.GetRequiredService<OrganizerSendLimiter>());
     }
 
     [Fact]
@@ -213,6 +214,50 @@ public class EnqueueInvitationsServiceTests
         await NothingShouldHaveHappenedAsync(exchange, HatStatus.NamesAssigned);
     }
 
+    /// <summary>
+    /// Written before the mail is queued, and kept past the exchange's deletion, so that whatever
+    /// SES says about these messages later can still find who sent them.
+    /// </summary>
+    [Fact]
+    public async Task AShakenExchange_IsRememberedAgainstTheOrganizerPastItsDeletion()
+    {
+        // arrange
+        var exchange = await SeedAsync(HatStatus.NamesAssigned);
+
+        // act
+        await _sut.ExecuteAsync(Request(exchange), SenderIp);
+        await _provider.DeleteHatAsync(new DeleteHatRequest { OrganizerEmail = exchange.OrganizerEmail, HatId = exchange.HatId });
+
+        // assert
+        var sends = await SendsAsync(exchange.OrganizerEmail);
+        sends.Select(send => (send.ParticipantId, send.EmailNormalized)).Should().BeEquivalentTo(
+            exchange.ParticipantIds.Select(pair => (pair.Value, pair.Key.Trim().ToLowerInvariant())));
+    }
+
+    /// <summary>
+    /// Create, send, delete, repeat: the creation limits give the slot back on delete, so the send
+    /// is where it has to stop, and it has to stop without anything going.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheOrganizerHasMailedTheirLimit_TheSendIsRefusedAndNothingIsLeftBehind()
+    {
+        // arrange
+        var exchange = await SeedAsync(HatStatus.NamesAssigned);
+        await SentAsync(exchange.OrganizerEmail, OrganizerSendLimiter.DailyLimit);
+
+        // act
+        var result = await _sut.ExecuteAsync(Request(exchange), SenderIp);
+
+        // assert
+        result.IsFaulted.Should().BeTrue();
+        result.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+
+        await NothingShouldHaveHappenedAsync(exchange, HatStatus.NamesAssigned);
+        (await SendsAsync(exchange.OrganizerEmail)).Should().HaveCount(
+            OrganizerSendLimiter.DailyLimit,
+            "a refused send must not count against the organizer");
+    }
+
     private static SendInvitationsRequest Request(Exchange exchange) =>
         new() { HatId = exchange.HatId, OrganizerEmail = exchange.OrganizerEmail };
 
@@ -244,6 +289,36 @@ public class EnqueueInvitationsServiceTests
         var participantIds = exchange.ParticipantIds.Values.ToList();
 
         return await context.GiftIdeaTokens.CountAsync(token => participantIds.Contains(token.ParticipantId));
+    }
+
+    private async Task<List<OrganizerSendEntity>> SendsAsync(string organizerEmail)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var normalized = organizerEmail.Trim().ToLowerInvariant();
+
+        return await context.OrganizerSends
+            .AsNoTracking()
+            .Where(send => send.OrganizerEmailNormalized == normalized)
+            .ToListAsync();
+    }
+
+    private async Task SentAsync(string organizerEmail, int count)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        context.OrganizerSends.AddRange(Enumerable
+            .Range(0, count)
+            .Select(_ => new OrganizerSendEntity
+            {
+                OrganizerSendId = Guid.CreateVersion7(),
+                ParticipantId = Guid.NewGuid(),
+                OrganizerEmailNormalized = organizerEmail.Trim().ToLowerInvariant(),
+                EmailNormalized = $"{Guid.NewGuid():N}@example.com",
+                SentAt = DateTimeOffset.UtcNow.AddHours(-1)
+            }));
+
+        await context.SaveChangesAsync();
     }
 
     private async Task ComplainAsync(string organizerEmail, int count)

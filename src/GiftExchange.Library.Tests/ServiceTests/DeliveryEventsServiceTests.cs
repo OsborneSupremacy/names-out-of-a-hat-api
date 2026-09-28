@@ -284,6 +284,75 @@ public class DeliveryEventsServiceTests
         (await ComplaintsAgainstAsync(hat.OrganizerEmail)).Should().ContainSingle();
     }
 
+    /// <summary>
+    /// The hole the send ledger closes. Complaints arrive hours or days after the send, and an
+    /// organizer who deleted the exchange in between used to leave nothing to lead from the
+    /// participant back to them.
+    /// </summary>
+    [Fact]
+    public async Task AComplaintArrivingAfterTheExchangeWasDeleted_IsStillHeldAgainstTheOrganizer()
+    {
+        // arrange
+        var (hat, participantId, email) = await SentParticipantAsync();
+        await _provider.DeleteHatAsync(new DeleteHatRequest { OrganizerEmail = hat.OrganizerEmail, HatId = hat.HatId });
+
+        // act
+        await _sut.ProcessRecordAsync(Message(Complaint(MessageId(), participantId, email)));
+
+        // assert
+        (await ComplaintsAgainstAsync(hat.OrganizerEmail)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task AHardBounce_IsRememberedAgainstTheOrganizerOnce()
+    {
+        // arrange
+        var (hat, participantId, _) = await SentParticipantAsync();
+        var messageId = MessageId();
+
+        // act: redelivered, as SQS is entitled to do.
+        await _sut.ProcessRecordAsync(Message(Bounce(messageId, participantId, "Permanent", "General", "550 5.1.1 no such user")));
+        await _sut.ProcessRecordAsync(Message(Bounce(messageId, participantId, "Permanent", "General", "550 5.1.1 no such user")));
+
+        // assert
+        var bounce = (await BouncesAgainstAsync(hat.OrganizerEmail)).Should().ContainSingle().Subject;
+        bounce.EmailNormalized.Should().Be("someone@example.com");
+        bounce.BouncedAt.Should().Be(
+            DateTimeOffset.Parse("2026-08-28T10:00:06.000Z"),
+            "the window is measured from when the bounce happened, not when it reached us");
+    }
+
+    [Fact]
+    public async Task AHardBounceArrivingAfterTheExchangeWasDeleted_IsStillHeldAgainstTheOrganizer()
+    {
+        // arrange
+        var (hat, participantId, _) = await SentParticipantAsync();
+        await _provider.DeleteHatAsync(new DeleteHatRequest { OrganizerEmail = hat.OrganizerEmail, HatId = hat.HatId });
+
+        // act
+        await _sut.ProcessRecordAsync(Message(Bounce(MessageId(), participantId, "Permanent", "NoEmail", "550 5.1.1")));
+
+        // assert
+        (await BouncesAgainstAsync(hat.OrganizerEmail)).Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// A full mailbox or a receiving server having a bad minute says nothing about whether the
+    /// organizer should have been mailing that address.
+    /// </summary>
+    [Fact]
+    public async Task ATransientBounce_IsNotHeldAgainstTheOrganizer()
+    {
+        // arrange
+        var (hat, participantId, _) = await SentParticipantAsync();
+
+        // act
+        await _sut.ProcessRecordAsync(Message(Bounce(MessageId(), participantId, "Transient", "MailboxFull", "452 4.2.2 mailbox full")));
+
+        // assert
+        (await BouncesAgainstAsync(hat.OrganizerEmail)).Should().BeEmpty();
+    }
+
     [Fact]
     public async Task ANotSpamReport_IsNotRememberedAgainstTheOrganizer()
     {
@@ -451,6 +520,24 @@ public class DeliveryEventsServiceTests
         return (hat, ids[participant.Person.Email], participant.Person.Email);
     }
 
+    /// <summary>
+    /// A participant whose invitation has gone, so the ledger knows who sent it. What
+    /// EnqueueInvitationsService writes, written directly.
+    /// </summary>
+    private async Task<(HatDataModel hat, Guid participantId, string email)> SentParticipantAsync()
+    {
+        var (hat, participantId, email) = await ParticipantAsync();
+
+        await _provider.RecordOrganizerSendsAsync(new RecordOrganizerSendsRequest
+        {
+            OrganizerEmail = hat.OrganizerEmail,
+            Recipients = [new OrganizerSendRecipient { ParticipantId = participantId, Email = email }],
+            SentAt = DateTimeOffset.UtcNow
+        });
+
+        return (hat, participantId, email);
+    }
+
     private async Task<ParticipantEmailDeliveryEntity> SingleRowAsync(string messageId)
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
@@ -567,6 +654,18 @@ public class DeliveryEventsServiceTests
         return await context.OrganizerComplaints
             .AsNoTracking()
             .Where(complaint => complaint.OrganizerEmailNormalized == normalized)
+            .ToListAsync();
+    }
+
+    private async Task<List<OrganizerBounceEntity>> BouncesAgainstAsync(string organizerEmail)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var normalized = organizerEmail.Trim().ToLowerInvariant();
+
+        return await context.OrganizerBounces
+            .AsNoTracking()
+            .Where(bounce => bounce.OrganizerEmailNormalized == normalized)
             .ToListAsync();
     }
 

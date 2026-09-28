@@ -2,7 +2,9 @@ namespace GiftExchange.Library.Services;
 
 /// <summary>
 /// Once a day, does the two things that are measured from an exchange's date: asks organizers to
-/// close exchanges that have happened, and deletes exchanges that happened long enough ago.
+/// close exchanges that have happened, and deletes exchanges that happened long enough ago. And one
+/// that is not, because this is where the daily work lives: drops the send ledger's rows once they
+/// are too old to judge anybody by.
 /// </summary>
 /// <remarks>
 /// A daily sweep rather than a schedule per exchange, which is how the cool-off and the delivery
@@ -43,8 +45,38 @@ internal class ExchangeDateSweepService
     {
         var closePromptsSent = await SendClosePromptsAsync(now).ConfigureAwait(false);
         var hatsPurged = await PurgeAsync(now).ConfigureAwait(false);
+        var sendsPurged = await PurgeSendsAsync(now).ConfigureAwait(false);
 
-        return new ExchangeDateSweepResponse { ClosePromptsSent = closePromptsSent, HatsPurged = hatsPurged };
+        return new ExchangeDateSweepResponse
+        {
+            ClosePromptsSent = closePromptsSent,
+            HatsPurged = hatsPurged,
+            SendsPurged = sendsPurged
+        };
+    }
+
+    /// <summary>
+    /// Drops ledger rows older than the standing window, the longest anything reads them over.
+    /// </summary>
+    /// <remarks>
+    /// Past that window a row caps nothing and judges nobody, and it is a stranger's address kept
+    /// after the exchange that held it was deleted — which is only defensible while it is doing a
+    /// job. Logged and passed over on failure, like everything else here; tomorrow's run finds the
+    /// same rows.
+    /// </remarks>
+    private async Task<int> PurgeSendsAsync(DateTimeOffset now)
+    {
+        try
+        {
+            return await _giftExchangeProvider
+                .PurgeOrganizerSendsAsync(now.Subtract(OrganizerStandingChecker.Window))
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Failed to purge the send ledger past the standing window.");
+            return 0;
+        }
     }
 
     private async Task<int> SendClosePromptsAsync(DateTimeOffset now)

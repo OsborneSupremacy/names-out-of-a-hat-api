@@ -1227,11 +1227,11 @@ public class GiftExchangeProvider
     /// Remembers a complaint against whoever organizes the exchange this participant is in.
     /// </summary>
     /// <remarks>
-    /// Resolved from the participant now, because now is the only time it can be: the participant
-    /// row is what leads to the exchange and the exchange to its organizer, and either may be
-    /// deleted afterwards. A participant already gone by the time the complaint arrives costs the
-    /// attribution and nothing else — the complainant is blocked everywhere regardless, by
-    /// <c>DeliveryEventsService</c>, before this is asked.
+    /// Resolved through <see cref="FindOrganizerOfParticipantAsync"/>, which reads the send ledger
+    /// first and so still finds the organizer after the exchange has been deleted. Only a
+    /// participant with no ledger row and no participant row costs the attribution — the
+    /// complainant is blocked everywhere regardless, by <c>DeliveryEventsService</c>, before this
+    /// is asked.
     ///
     /// An organizer complaining about their own exchange is not written. They are a participant in
     /// it, so the event is well formed, but it says nothing about how they treat anybody else.
@@ -1267,22 +1267,16 @@ public class GiftExchangeProvider
             // Reset rather than accumulated, for the reason TryRecordDeliveryEventAsync gives.
             written = false;
 
-            var organizerEmail = await context.Participants
-                .AsNoTracking()
-                .Where(participant => participant.ParticipantId == request.ParticipantId)
-                .Select(participant => participant.Hat.Organizer.Email)
-                .SingleOrDefaultAsync()
+            var organizerEmailNormalized = await FindOrganizerOfParticipantAsync(context, request.ParticipantId)
                 .ConfigureAwait(false);
 
-            if (organizerEmail is null)
+            if (string.IsNullOrEmpty(organizerEmailNormalized))
             {
                 _logger.LogWarning(
                     "A complaint names participant {ParticipantId}, who is no longer in any exchange; it cannot be put against an organizer.",
                     request.ParticipantId);
                 return;
             }
-
-            var organizerEmailNormalized = organizerEmail.ToNormalizedEmail();
 
             if (organizerEmailNormalized == email)
                 return;
@@ -1308,6 +1302,273 @@ public class GiftExchangeProvider
         }).ConfigureAwait(false);
 
         return written;
+    }
+
+    /// <summary>
+    /// Which organizer sent mail to this participant, lower-cased and trimmed, or empty if nothing
+    /// says.
+    /// </summary>
+    /// <remarks>
+    /// The send ledger first, because it outlives the exchange: an organizer who sends and then
+    /// deletes must not leave every complaint and bounce that follows with nobody to answer for it.
+    /// The participant row second, for mail sent before the ledger existed, and for the organizer's
+    /// own copy of their invitation, which the ledger never records.
+    /// </remarks>
+    private static async Task<string> FindOrganizerOfParticipantAsync(GiftExchangeDbContext context, Guid participantId)
+    {
+        var fromLedger = await context.OrganizerSends
+            .AsNoTracking()
+            .Where(send => send.ParticipantId == participantId)
+            .Select(send => send.OrganizerEmailNormalized)
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        if (!string.IsNullOrEmpty(fromLedger))
+            return fromLedger;
+
+        var fromParticipant = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.ParticipantId == participantId)
+            .Select(participant => participant.Hat.Organizer.Email)
+            .SingleOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        return fromParticipant?.ToNormalizedEmail() ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Remembers a hard bounce against whoever organizes the exchange this participant is in.
+    /// </summary>
+    /// <remarks>
+    /// The bounce counterpart of <see cref="RecordOrganizerComplaintAsync"/>, and built the same
+    /// way for the same reasons: attributed through <see cref="FindOrganizerOfParticipantAsync"/>,
+    /// not written for an organizer's own address, and idempotent under redelivery.
+    /// </remarks>
+    /// <returns>Whether a row was written. False is an ordinary outcome, not a failure.</returns>
+    internal async Task<bool> RecordOrganizerBounceAsync(RecordOrganizerBounceRequest request)
+    {
+        var email = request.Email.ToNormalizedEmail();
+
+        if (request.ParticipantId == Guid.Empty || string.IsNullOrWhiteSpace(email))
+            return false;
+
+        try
+        {
+            return await RecordOrganizerBounceCoreAsync(request, email).ConfigureAwait(false);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            _logger.LogInformation("A bounce against this organizer was already recorded.");
+            return false;
+        }
+    }
+
+    private async Task<bool> RecordOrganizerBounceCoreAsync(RecordOrganizerBounceRequest request, string email)
+    {
+        var written = false;
+
+        await InTransactionAsync(async context =>
+        {
+            // Reset rather than accumulated, for the reason TryRecordDeliveryEventAsync gives.
+            written = false;
+
+            var organizerEmailNormalized = await FindOrganizerOfParticipantAsync(context, request.ParticipantId)
+                .ConfigureAwait(false);
+
+            if (string.IsNullOrEmpty(organizerEmailNormalized))
+            {
+                _logger.LogWarning(
+                    "A bounce names participant {ParticipantId}, who is no longer in any exchange; it cannot be put against an organizer.",
+                    request.ParticipantId);
+                return;
+            }
+
+            if (organizerEmailNormalized == email)
+                return;
+
+            var alreadyRecorded = await context.OrganizerBounces
+                .AnyAsync(bounce => bounce.OrganizerEmailNormalized == organizerEmailNormalized
+                                    && bounce.EmailNormalized == email)
+                .ConfigureAwait(false);
+
+            if (alreadyRecorded)
+                return;
+
+            context.OrganizerBounces.Add(new OrganizerBounceEntity
+            {
+                OrganizerBounceId = Guid.CreateVersion7(),
+                OrganizerEmailNormalized = organizerEmailNormalized,
+                EmailNormalized = email,
+                BouncedAt = request.BouncedAt
+            });
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            written = true;
+        }).ConfigureAwait(false);
+
+        return written;
+    }
+
+    /// <summary>
+    /// Writes one ledger row for everybody a send is about to mail, other than the organizer.
+    /// </summary>
+    /// <remarks>
+    /// Called before the mail is queued rather than after, so a complaint can never arrive for a
+    /// message the ledger has not heard of. The cost is that a send failing after this point is
+    /// counted though nothing went, which errs the way a limit should: the organizer retries, the
+    /// addresses are the same, and distinct counting makes the second write free.
+    ///
+    /// No idempotence guard. A duplicate row changes no count — every question asked of the table
+    /// is about distinct addresses — and the organizer lookup only needs one of them.
+    /// </remarks>
+    internal async Task RecordOrganizerSendsAsync(RecordOrganizerSendsRequest request)
+    {
+        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+
+        if (string.IsNullOrWhiteSpace(organizerEmail))
+            return;
+
+        var rows = request.Recipients
+            .Select(recipient => new { recipient.ParticipantId, Email = recipient.Email.ToNormalizedEmail() })
+            .Where(recipient => recipient.ParticipantId != Guid.Empty
+                                && !string.IsNullOrWhiteSpace(recipient.Email)
+                                && recipient.Email != organizerEmail)
+            .ToList();
+
+        if (rows.Count == 0)
+            return;
+
+        await InTransactionAsync(async context =>
+        {
+            context.OrganizerSends.AddRange(rows.Select(row => new OrganizerSendEntity
+            {
+                OrganizerSendId = Guid.CreateVersion7(),
+                ParticipantId = row.ParticipantId,
+                OrganizerEmailNormalized = organizerEmail,
+                EmailNormalized = row.Email,
+                SentAt = request.SentAt
+            }));
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Everybody this organizer has mailed since a moment, and when each was last mailed, on
+    /// behalf of <c>OrganizerSendLimiter</c>.
+    /// </summary>
+    /// <remarks>
+    /// Rows rather than a GROUP BY, as <see cref="CountOrganizerRefusalsAsync"/> returns addresses
+    /// rather than counts: the list is short by construction — an organizer whose list is long has
+    /// been refused well before it got that way — and grouping here keeps the query the plainest
+    /// kind DSQL takes.
+    /// </remarks>
+    internal async Task<ListOrganizerRecipientsResponse> ListOrganizerRecipientsAsync(
+        ListOrganizerRecipientsRequest request
+    )
+    {
+        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+
+        if (string.IsNullOrWhiteSpace(organizerEmail))
+            return new ListOrganizerRecipientsResponse { LastSentAt = ImmutableDictionary<string, DateTimeOffset>.Empty };
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var sends = await context.OrganizerSends
+            .AsNoTracking()
+            .Where(send => send.OrganizerEmailNormalized == organizerEmail && send.SentAt >= request.Since)
+            .Select(send => new { send.EmailNormalized, send.SentAt })
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return new ListOrganizerRecipientsResponse
+        {
+            LastSentAt = sends
+                .GroupBy(send => send.EmailNormalized)
+                .ToImmutableDictionary(group => group.Key, group => group.Max(send => send.SentAt))
+        };
+    }
+
+    /// <summary>
+    /// How many distinct addresses have hard-bounced this organizer's mail since a moment, and how
+    /// many they mailed, on behalf of <c>OrganizerStandingChecker</c>.
+    /// </summary>
+    /// <remarks>
+    /// Both from tables that outlive the exchanges that caused them, for the reason
+    /// <see cref="CountOrganizerRefusalsAsync"/> gives. Counted in the database this time: neither
+    /// number is a union of the other, so plain distinct counts answer the question.
+    /// </remarks>
+    internal async Task<CountOrganizerBouncesResponse> CountOrganizerBouncesAsync(
+        CountOrganizerRefusalsRequest request
+    )
+    {
+        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+
+        if (string.IsNullOrWhiteSpace(organizerEmail))
+            return new CountOrganizerBouncesResponse { Bounced = 0, Recipients = 0 };
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        // Already distinct, by uq_organizer_bounce.
+        var bounced = await context.OrganizerBounces
+            .AsNoTracking()
+            .CountAsync(bounce => bounce.OrganizerEmailNormalized == organizerEmail
+                                  && bounce.BouncedAt >= request.Since)
+            .ConfigureAwait(false);
+
+        var recipients = await context.OrganizerSends
+            .AsNoTracking()
+            .Where(send => send.OrganizerEmailNormalized == organizerEmail && send.SentAt >= request.Since)
+            .Select(send => send.EmailNormalized)
+            .Distinct()
+            .CountAsync()
+            .ConfigureAwait(false);
+
+        return new CountOrganizerBouncesResponse { Bounced = bounced, Recipients = recipients };
+    }
+
+    /// <summary>
+    /// Removes ledger rows sent before a moment, a batch at a time, and says how many went.
+    /// </summary>
+    /// <remarks>
+    /// Batched because DSQL caps the rows one transaction may modify, and a day's sends across
+    /// every organizer in December could pass it. Each batch is its own transaction, so a failure
+    /// partway leaves the rest for tomorrow's sweep rather than undoing what was done.
+    /// </remarks>
+    internal async Task<int> PurgeOrganizerSendsAsync(DateTimeOffset sentBefore)
+    {
+        const int batchSize = 1000;
+
+        var purged = 0;
+
+        while (true)
+        {
+            var deleted = 0;
+
+            await InTransactionAsync(async context =>
+            {
+                var ids = await context.OrganizerSends
+                    .AsNoTracking()
+                    .Where(send => send.SentAt < sentBefore)
+                    .OrderBy(send => send.SentAt)
+                    .Select(send => send.OrganizerSendId)
+                    .Take(batchSize)
+                    .ToListAsync()
+                    .ConfigureAwait(false);
+
+                deleted = ids.Count == 0
+                    ? 0
+                    : await context.OrganizerSends
+                        .Where(send => ids.Contains(send.OrganizerSendId))
+                        .ExecuteDeleteAsync()
+                        .ConfigureAwait(false);
+            }).ConfigureAwait(false);
+
+            purged += deleted;
+
+            if (deleted < batchSize)
+                return purged;
+        }
     }
 
     /// <summary>
