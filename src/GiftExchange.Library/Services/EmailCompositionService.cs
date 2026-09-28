@@ -105,6 +105,10 @@ public class EmailCompositionService
     /// The same subject line from its two parts, for the invitation reminder, which tells somebody
     /// what to search their mail for and has no whole hat to hand.
     /// </summary>
+    /// <remarks>
+    /// Written out again in the app's participantEmail.ts, which gives it to the organizer to pass on
+    /// as something to search for. Change both together.
+    /// </remarks>
     internal static string GetSubject(string organizerName, string hatName) =>
         $"{organizerName} has added you to {GiftExchangeNaming.Describe(hatName)}!";
 

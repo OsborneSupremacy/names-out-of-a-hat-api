@@ -55,6 +55,7 @@ import { AdvancedOptionsMenu } from '../components/AdvancedOptionsMenu'
 import { ResetHatModal } from '../components/ResetHatModal'
 import { DeleteHatModal } from '../components/DeleteHatModal'
 import { DeliveryHelpModal } from '../components/DeliveryHelpModal'
+import { EmailParticipantsModal } from '../components/EmailParticipantsModal'
 import { downloadExport } from '../hatExport'
 import './GiftExchangeDetail.css'
 
@@ -98,6 +99,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
   const [showResetModal, setShowResetModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showDeliveryHelp, setShowDeliveryHelp] = useState(false)
+  const [showEmailParticipants, setShowEmailParticipants] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [editingAddressFor, setEditingAddressFor] = useState<Participant | null>(null)
   const [savingAddress, setSavingAddress] = useState(false)
@@ -804,7 +806,12 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                     canDelete={canDelete}
                     deleteUnavailableReason="Invitations have gone out, so this can no longer be deleted."
                     isExporting={isExporting}
+                    canEmailParticipants={hat.participants.some(
+                      (participant) => participant.person.email !== hat.organizer.email
+                    )}
+                    emailParticipantsUnavailableReason="Add some participants first."
                     onExport={handleExportHat}
+                    onEmailParticipants={() => setShowEmailParticipants(true)}
                     onReset={() => setShowResetModal(true)}
                     onDelete={() => setShowDeleteModal(true)}
                   />
@@ -1457,6 +1464,10 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
           organizerName={hat.organizer.name}
           onClose={() => setShowDeliveryHelp(false)}
         />
+      )}
+
+      {showEmailParticipants && hat && (
+        <EmailParticipantsModal hat={hat} onClose={() => setShowEmailParticipants(false)} />
       )}
 
       {showSendConfirmation && invitationsPreview && hat && (

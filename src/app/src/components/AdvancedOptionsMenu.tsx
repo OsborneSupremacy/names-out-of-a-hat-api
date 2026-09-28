@@ -11,7 +11,12 @@ interface AdvancedOptionsMenuProps {
   /** Why not, shown under the disabled item. Only read when {@link canDelete} is false. */
   deleteUnavailableReason: string
   isExporting: boolean
+  /** False when there is nobody but the organizer to write to. */
+  canEmailParticipants: boolean
+  /** Why not, shown under the disabled item. Only read when {@link canEmailParticipants} is false. */
+  emailParticipantsUnavailableReason: string
   onExport: () => void
+  onEmailParticipants: () => void
   onReset: () => void
   onDelete: () => void
 }
@@ -20,7 +25,8 @@ interface AdvancedOptionsMenuProps {
  * The things an organizer needs rarely and would not want to meet by accident.
  *
  * Behind a menu rather than beside the buttons that move an exchange forward, because none of these
- * do: one takes a copy away, and the other two throw the setup out. Putting them in the same row as
+ * do: one takes a copy away, one writes to the participants from outside the app, and the other two
+ * throw the setup out. Putting them in the same row as
  * "Shake the Hat" would make the row a place to be careful, which is the opposite of what the rest
  * of that page is for.
  *
@@ -33,7 +39,10 @@ export function AdvancedOptionsMenu({
   canDelete,
   deleteUnavailableReason,
   isExporting,
+  canEmailParticipants,
+  emailParticipantsUnavailableReason,
   onExport,
+  onEmailParticipants,
   onReset,
   onDelete,
 }: AdvancedOptionsMenuProps) {
@@ -101,6 +110,21 @@ export function AdvancedOptionsMenu({
             </span>
             <span className="advanced-options-item-hint">
               Download everything in this gift exchange as a JSON file.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            className="advanced-options-item"
+            onClick={() => choose(onEmailParticipants)}
+            disabled={!canEmailParticipants}
+          >
+            <span className="advanced-options-item-label">Email Participants From Your Address</span>
+            <span className="advanced-options-item-hint">
+              {canEmailParticipants
+                ? 'Write to everyone from your own email, which is less likely to land in spam.'
+                : emailParticipantsUnavailableReason}
             </span>
           </button>
 

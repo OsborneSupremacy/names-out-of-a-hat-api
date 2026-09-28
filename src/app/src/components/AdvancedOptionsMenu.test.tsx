@@ -10,7 +10,10 @@ function renderMenu(overrides: Partial<Parameters<typeof AdvancedOptionsMenu>[0]
     canDelete: true,
     deleteUnavailableReason: 'Invitations have gone out, so this can no longer be deleted.',
     isExporting: false,
+    canEmailParticipants: true,
+    emailParticipantsUnavailableReason: 'Add some participants first.',
     onExport: vi.fn(),
+    onEmailParticipants: vi.fn(),
     onReset: vi.fn(),
     onDelete: vi.fn(),
     ...overrides,
@@ -50,9 +53,9 @@ describe('AdvancedOptionsMenu', () => {
 
     const labels = screen.getAllByRole('menuitem').map((item) => item.textContent)
 
-    expect(labels).toHaveLength(3)
-    expect(labels[1]).toMatch(/^Reset/)
-    expect(labels[2]).toMatch(/^Delete Gift Exchange/)
+    expect(labels).toHaveLength(4)
+    expect(labels[2]).toMatch(/^Reset/)
+    expect(labels[3]).toMatch(/^Delete Gift Exchange/)
   })
 
   it('exports and closes', async () => {
@@ -64,6 +67,34 @@ describe('AdvancedOptionsMenu', () => {
 
     expect(onExport).toHaveBeenCalled()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('opens the participant email and closes', async () => {
+    const user = userEvent.setup()
+    const { onEmailParticipants } = renderMenu()
+
+    await openMenu(user)
+    await user.click(screen.getByRole('menuitem', { name: /Email Participants From Your Address/ }))
+
+    expect(onEmailParticipants).toHaveBeenCalled()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('shows the participant email disabled, with the reason, when there is nobody to write to', async () => {
+    const user = userEvent.setup()
+    const { onEmailParticipants, emailParticipantsUnavailableReason } = renderMenu({
+      canEmailParticipants: false,
+    })
+
+    await openMenu(user)
+
+    const item = screen.getByRole('menuitem', { name: /Email Participants From Your Address/ })
+
+    expect(item).toBeDisabled()
+    expect(screen.getByText(emailParticipantsUnavailableReason)).toBeInTheDocument()
+
+    await user.click(item)
+    expect(onEmailParticipants).not.toHaveBeenCalled()
   })
 
   it('resets and closes', async () => {

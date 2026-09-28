@@ -1,18 +1,8 @@
 import { useEffect } from 'react'
+import { SENDER_ADDRESS } from '../participantEmail'
 // Shares the modal chrome with the other dialogs; see the note in EditNameModal.
 import './CreateHatModal.css'
 import './DeliveryHelpModal.css'
-
-/**
- * The address every message this application sends to a participant comes from.
- *
- * Written out here rather than fetched, because it is the one thing an organizer needs to hand
- * somebody who cannot find their invitation: searching a mailbox for it finds the message wherever
- * it was filed, which looking in the inbox does not. It is a literal in the sending services too
- * (InvitationQueueHandlerService and AutomaticEmailSender) — it is a public fact, printed in the
- * header of every email this exchange has already sent, rather than configuration.
- */
-const SENDER_ADDRESS = 'donotreply@mail.namesoutofahat.com'
 
 interface DeliveryHelpModalProps {
   /** Whose name opens the subject line of every invitation this exchange sent. */
