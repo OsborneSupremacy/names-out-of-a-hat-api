@@ -1,0 +1,19 @@
+/* Amber like the copy dialog's warning rather than red like the one below it: this is not what the
+   reveal does, it is something already wrong that the organizer may want to fix first. */
+.reveal-undelivered {
+  margin: 0 0 1.25rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(217, 119, 6, 0.4);
+  border-radius: 0.375rem;
+  background: rgba(217, 119, 6, 0.08);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.reveal-undelivered p {
+  margin: 0 0 0.5rem;
+}
+
+.reveal-undelivered p:last-child {
+  margin-bottom: 0;
+}

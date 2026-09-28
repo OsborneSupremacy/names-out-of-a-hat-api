@@ -148,4 +148,46 @@ describe('CopyHatModal', () => {
     expect(screen.getByText(/already exists/i)).toBeInTheDocument()
     expect(props.onClose).not.toHaveBeenCalled()
   })
+
+  describe('when an address is not working', () => {
+    const withBounce = (status: string, messageType = 'COMPLETION') =>
+      participants.map((p, index) =>
+        index === 0 ? { ...p, deliveryStatus: status, deliveryMessageType: messageType } : p
+      )
+
+    // The button on the page stays live, so this dialog is where the organizer finds out why.
+    it('explains instead of offering the form', () => {
+      renderModal({ participants: withBounce('BOUNCED') })
+
+      expect(screen.getByRole('alert')).toHaveTextContent(/Alpha isn't receiving emails/)
+      expect(screen.queryByLabelText(/new gift exchange name/i)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /create copy/i })).not.toBeInTheDocument()
+    })
+
+    it('names everybody affected', () => {
+      renderModal({
+        participants: participants.map((p) => ({ ...p, deliveryStatus: 'REJECTED' })),
+      })
+
+      expect(screen.getByRole('alert')).toHaveTextContent(/Alpha, Beta, and Charlie/)
+    })
+
+    it('closes when asked', async () => {
+      const user = userEvent.setup()
+      const props = renderModal({ participants: withBounce('FAILED') })
+
+      // By its text, because the × in the corner is also labelled Close.
+      await user.click(screen.getByText('Close'))
+
+      expect(props.onClose).toHaveBeenCalled()
+      expect(props.onSubmit).not.toHaveBeenCalled()
+    })
+
+    // Somebody who marked a message as spam received it; the server leaves them out of the copy.
+    it('does not block on a complaint', () => {
+      renderModal({ participants: withBounce('COMPLAINED') })
+
+      expect(screen.getByRole('button', { name: /create copy/i })).toBeInTheDocument()
+    })
+  })
 })

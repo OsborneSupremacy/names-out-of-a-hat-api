@@ -22,7 +22,8 @@
   opacity: 0.75;
 }
 
-/* Advisory rather than blocking: the copy still goes ahead. */
+/* Advisory for stranded participants, where the copy still goes ahead. Also carries the notice that
+   replaces the form when an address is not working, which blocks it. */
 .copy-warning {
   margin: 0 0 1.25rem;
   padding: 0.75rem;
@@ -31,4 +32,12 @@
   background: rgba(217, 119, 6, 0.08);
   font-size: 0.85rem;
   line-height: 1.45;
+}
+
+.copy-warning p {
+  margin: 0 0 0.5rem;
+}
+
+.copy-warning p:last-child {
+  margin-bottom: 0;
 }

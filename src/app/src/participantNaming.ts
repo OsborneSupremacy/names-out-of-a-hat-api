@@ -20,6 +20,13 @@ export function displayName(person: Person, people: Person[]): string {
   return shared ? `${person.name} (${person.email})` : person.name
 }
 
+/** "Sam", "Sam and Alex", "Sam, Alex, and Jo" — for a list of names inside a sentence. */
+export function formatNames(names: string[]): string {
+  if (names.length === 1) return names[0]
+  if (names.length === 2) return `${names[0]} and ${names[1]}`
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
+}
+
 function sameText(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }

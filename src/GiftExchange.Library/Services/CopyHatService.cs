@@ -10,6 +10,13 @@ internal class CopyHatService : IApiGatewayHandler
     private const string NameTakenMessage =
         "A gift exchange with this name already exists. If this is the same gift exchange for a different year, try adding the year in the name to differentiate it from previous exchanges.";
 
+    /// <summary>
+    /// The same explanation the copy dialog gives, for a client that asks anyway. The dialog names
+    /// the people; this does not need to, because the page it is shown on already does.
+    /// </summary>
+    private const string UndeliverableMessage =
+        "Some of the people in this gift exchange are not receiving emails from this app. Correct their email addresses before copying it.";
+
     private readonly GiftExchangeProvider _giftExchangeProvider;
 
     private readonly HatPreconditionValidator _hatPreconditionValidator;
@@ -63,6 +70,21 @@ internal class CopyHatService : IApiGatewayHandler
                 new AggregateException(hatPreconditionResult.PreconditionFailureMessage.FailureMessage),
                 hatPreconditionResult.PreconditionFailureMessage.StatusCode);
 
+        var sourceHat = hatPreconditionResult.Hat;
+
+        // Refused outright rather than dropped from the copy the way a do-not-add refusal is. A
+        // refusal is somebody's wish, and honouring it quietly is the point; a bad address is a
+        // mistake the organizer can fix, and carrying it forward would send next year's invitation
+        // into the same hole. Checked before anything else because it is the one refusal here the
+        // organizer has to go back to the source exchange to answer.
+        //
+        // Any message type, not only the invitation. By the time an exchange can be copied the
+        // newest message is usually the announcement, and it went to the same address.
+        if (sourceHat.Participants.Any(participant => DeliveryStatuses.IsUndeliverable(participant.DeliveryStatus)))
+            return new Result<CopyHatResponse>(
+                new InvalidOperationException(UndeliverableMessage),
+                HttpStatusCode.Conflict);
+
         var (nameTaken, _) = await _giftExchangeProvider
             .DoesHatAlreadyExistAsync(request.OrganizerEmail, request.NewHatName)
             .ConfigureAwait(false);
@@ -83,8 +105,6 @@ internal class CopyHatService : IApiGatewayHandler
             return new Result<CopyHatResponse>(
                 new InvalidOperationException(limit.RefusalMessage),
                 limit.RefusalStatusCode);
-
-        var sourceHat = hatPreconditionResult.Hat;
 
         // Measured against the source rather than what the copy turns out to hold. The refusals
         // read below can only make the copy smaller, so a source inside the limit cannot produce a

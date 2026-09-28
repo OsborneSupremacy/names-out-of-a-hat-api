@@ -1,6 +1,7 @@
 import { useMemo, useState, FormEvent } from 'react'
 import { Participant } from '../api'
-import { displayName } from '../participantNaming'
+import { isUndeliverable } from '../deliveryStatus'
+import { displayName, formatNames } from '../participantNaming'
 // Shares the modal chrome with the other dialogs; see the note in EditNameModal.
 import './CreateHatModal.css'
 import './CopyHatModal.css'
@@ -70,6 +71,16 @@ export function CopyHatModal({
       .map((participant) => displayName(participant.person, people))
   }, [participants, excludePreviousRecipients])
 
+  // Anybody whose address is known not to work. Any message type, because by now the newest one is
+  // usually the announcement and it went to the same address; the server refuses on the same rule.
+  const undeliverableParticipants = useMemo(() => {
+    const people = participants.map((participant) => participant.person)
+
+    return participants
+      .filter((participant) => isUndeliverable(participant.deliveryStatus))
+      .map((participant) => displayName(participant.person, people))
+  }, [participants])
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
@@ -90,6 +101,10 @@ export function CopyHatModal({
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  if (undeliverableParticipants.length > 0) {
+    return <CopyBlocked names={undeliverableParticipants} onClose={onClose} />
   }
 
   return (
@@ -172,8 +187,58 @@ export function CopyHatModal({
   )
 }
 
-function formatNames(names: string[]): string {
-  if (names.length === 1) return names[0]
-  if (names.length === 2) return `${names[0]} and ${names[1]}`
-  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
+/**
+ * What the copy dialog shows instead of the form while an address is known not to work.
+ *
+ * The button stays live and opens this, rather than being disabled, on purpose: a disabled button
+ * does not say why, and the why is the whole point — the organizer needs to know somebody is not
+ * getting their email, not merely that copying is unavailable.
+ */
+function CopyBlocked({ names, onClose }: { names: string[]; onClose: () => void }) {
+  const one = names.length === 1
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Copy Gift Exchange</h2>
+          <button className="close-button" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+
+        <div className="copy-warning" role="alert">
+          <p>
+            {one ? (
+              <>
+                <strong>{names[0]}</strong> isn't receiving emails from this app. Their email address
+                needs to be corrected before it can be used in a new gift exchange.
+              </>
+            ) : (
+              <>
+                Some people in this gift exchange aren't receiving emails from this app:{' '}
+                <strong>{formatNames(names)}</strong>. Their email addresses need to be corrected
+                before they can be used in a new gift exchange.
+              </>
+            )}
+          </p>
+          <p>
+            If you're sure {one ? 'the address is' : 'an address is'} correct, something beyond our
+            control is stopping mail from reaching it. Unfortunately, as much as we'd like to, we
+            can't use that address.
+          </p>
+        </div>
+
+        <p className="modal-note">
+          You can correct an address from the participant list on this page.
+        </p>
+
+        <div className="modal-actions">
+          <button type="button" className="primary-button" onClick={onClose} autoFocus>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }

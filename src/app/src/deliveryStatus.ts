@@ -58,6 +58,16 @@ export function formatDeliveryMessageType(messageType: string): string {
  */
 const ACTIONABLE_STATUSES = ['BOUNCED', 'REJECTED', 'FAILED']
 
+/**
+ * Whether this status says the message is known not to have arrived.
+ *
+ * The same three statuses as {@link ACTIONABLE_STATUSES}, and the same set the server refuses a
+ * copy over. COMPLAINED is not among them: somebody who marked a message as spam received it.
+ */
+export function isUndeliverable(status: string): boolean {
+  return ACTIONABLE_STATUSES.includes(status)
+}
+
 /** Grouped for colour: good, waiting, or wrong. */
 export type DeliveryTone = 'good' | 'neutral' | 'bad'
 

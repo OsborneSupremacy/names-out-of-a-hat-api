@@ -49,6 +49,7 @@ import { AddParticipantModal } from '../components/AddParticipantModal'
 import { InvitationsPreviewModal } from '../components/InvitationsPreviewModal'
 import { SendConfirmationModal } from '../components/SendConfirmationModal'
 import { CopyHatModal } from '../components/CopyHatModal'
+import { RevealHatModal } from '../components/RevealHatModal'
 import { ShakeHatModal } from '../components/ShakeHatModal'
 import { AdvancedOptionsMenu } from '../components/AdvancedOptionsMenu'
 import { ResetHatModal } from '../components/ResetHatModal'
@@ -91,8 +92,8 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
   const [invitationsPreview, setInvitationsPreview] = useState<PreviewInvitationsResponse | null>(null)
   const [isSendingInvitations, setIsSendingInvitations] = useState(false)
   const [showSendConfirmation, setShowSendConfirmation] = useState(false)
-  const [isClosing, setIsClosing] = useState(false)
   const [showCopyModal, setShowCopyModal] = useState(false)
+  const [showRevealModal, setShowRevealModal] = useState(false)
   const [showShakeModal, setShowShakeModal] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -579,32 +580,20 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
     }
   }
 
+  /**
+   * Errors are rethrown rather than set on the page, so the dialog can show them beside the button
+   * that caused them.
+   */
   const handleCloseHat = async () => {
     if (!hatId || !hat) return
 
-    const confirmed = window.confirm(
-      'Reveal who everybody drew? Every participant will be emailed to say the gift exchange has finished, along with who picked whose name. This cannot be undone, so only do it once the gift exchange has actually happened.'
-    )
-    if (!confirmed) return
+    await closeHat({
+      organizerEmail: userEmail,
+      hatId,
+    })
 
-    setIsClosing(true)
-    setError('')
-
-    try {
-      await closeHat({
-        organizerEmail: userEmail,
-        hatId,
-      })
-
-      // Reload the hat data
-      const updatedHat = await getHat(userEmail, hatId)
-      setHat(updatedHat)
-    } catch (err) {
-      console.error('Error revealing picked names:', err)
-      setError(err instanceof Error ? err.message : 'Failed to reveal the picked names')
-    } finally {
-      setIsClosing(false)
-    }
+    const updatedHat = await getHat(userEmail, hatId)
+    setHat(updatedHat)
   }
 
   /**
@@ -980,10 +969,9 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                   <div className="action-container">
                     <button
                       className="action-button action-close-button"
-                      onClick={handleCloseHat}
-                      disabled={isClosing}
+                      onClick={() => setShowRevealModal(true)}
                     >
-                      {isClosing ? 'Revealing...' : 'Reveal Picked Names'}
+                      Reveal Picked Names
                     </button>
                     <p className="action-hint">
                       Show who everybody drew. Every participant is emailed to say the gift exchange has finished, with
@@ -1443,6 +1431,15 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
           hasBeenShaken={hat.status === 'NAMES_ASSIGNED'}
           onClose={() => setShowDeleteModal(false)}
           onSubmit={handleDeleteHat}
+        />
+      )}
+
+      {showRevealModal && hat && (
+        <RevealHatModal
+          hatName={hat.name}
+          participants={hat.participants}
+          onClose={() => setShowRevealModal(false)}
+          onSubmit={handleCloseHat}
         />
       )}
 
