@@ -118,7 +118,7 @@ public class AskPageComposer
             body.Append(Choices(others, $"we'll ask for ideas about {encodedName}", IsTicked));
         }
 
-        body.Append(Question(request.Question));
+        body.Append(Question(request.Question, encodedName));
 
         body.Append(
             """
@@ -250,17 +250,21 @@ public class AskPageComposer
     /// is an extra. The warning sits under the box rather than at the top of the page: it is about
     /// what goes in this box, and somebody typing is looking here.
     ///
-    /// The example is written about "they" because one question goes to everybody ticked, the pick
-    /// included, and a question phrased for the pick reads oddly to anybody else.
+    /// The label names the subject and the example is written about "they" because one question goes
+    /// to everybody ticked, the pick included, and a question phrased for the pick reads oddly to
+    /// anybody else. It matters to moderation too: Comprehend scores "What size shirt do you wear?"
+    /// over the threshold as sexual and as harassment, and "What size shirt do they wear?" nowhere
+    /// near it, so the framing that reads best is also the one that gets through.
     /// </remarks>
-    private static string Question(string question) =>
+    private static string Question(string question, string encodedName) =>
         $"""
-         <p style="margin:24px 0 8px;"><label for="{QuestionField}" style="font-weight:bold;">Anything particular you'd like to know?</label>
+         <p style="margin:24px 0 8px;"><label for="{QuestionField}" style="font-weight:bold;">Anything particular you'd like to know about {encodedName}?</label>
          <span style="color:#666666;font-size:14px;"> &mdash; optional</span></p>
          <textarea id="{QuestionField}" name="{QuestionField}" rows="3" maxlength="{AskQuestionPolicy.MaxLength}" placeholder="e.g. What shirt size do they wear?" style="box-sizing:border-box;width:100%;padding:12px;border:1px solid #cccccc;border-radius:4px;font:inherit;">{HttpUtility.HtmlEncode(question)}</textarea>
          <p style="margin:8px 0 0;color:#666666;font-size:14px;"><b>Be careful not to reveal your
          identity in your question</b> &mdash; don't sign it, and don't mention anything only you
-         would know. Everyone you've ticked gets the same question. Up to
+         would know. Everyone you've ticked gets the same question, so write it about
+         {encodedName} rather than to them. Up to
          {AskQuestionPolicy.MaxLength:N0} characters, and no links.</p>
          """;
 
@@ -284,8 +288,11 @@ public class AskPageComposer
             AskQuestionOutcome.RejectedContainsLink =>
                 "Nobody's been asked yet &mdash; your question contains a link, and we don't send links with a question. Please take it out.",
 
+            // The likeliest way to land here innocently is a question put to "you": the filter
+            // reads a size or a body asked about in the second person far more harshly than the
+            // same question about "they", so the way out is named rather than left to guesswork.
             AskQuestionOutcome.RejectedInappropriateContent =>
-                "Nobody's been asked yet &mdash; your question contains content we can't pass on. Please reword it.",
+                "Nobody's been asked yet &mdash; your question contains content we can't pass on. Please reword it. Our filter is much stricter with questions asked to &ldquo;you&rdquo;, so try asking about them instead &mdash; &ldquo;What size do they wear?&rdquo; rather than &ldquo;What size do you wear?&rdquo;",
 
             // Distinct from the line above on purpose: the question may be perfectly fine, and
             // calling it inappropriate when the checker was simply unreachable is wrong and unhelpful.

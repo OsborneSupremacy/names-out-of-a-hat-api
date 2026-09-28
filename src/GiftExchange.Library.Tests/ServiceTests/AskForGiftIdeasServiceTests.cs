@@ -699,6 +699,17 @@ public class AskForGiftIdeasServiceTests
     }
 
     [Fact]
+    public void ExplainRefusal_GivenInappropriateContent_SuggestsAskingAboutThemRatherThanYou()
+    {
+        // act
+        var explanation = AskPageComposer.ExplainRefusal(AskQuestionOutcome.RejectedInappropriateContent);
+
+        // assert: a size asked to "you" is the innocent question the filter refuses, so the way
+        // out is spelled out.
+        explanation.Should().Contain("What size do they wear?");
+    }
+
+    [Fact]
     public async Task Post_GivenAQuestion_QuotesItInEveryAsk()
     {
         // arrange
