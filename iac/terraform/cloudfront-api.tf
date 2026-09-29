@@ -87,9 +87,9 @@ resource "random_password" "origin_verify" {
 }
 
 locals {
-  # Off for the first apply, which introduces the header: CloudFront takes minutes to start sending
-  # it and the Lambda's configuration changes in seconds, so enforcing straight away would refuse
-  # real traffic in between. Once the router has stopped logging "did not come through CloudFront"
-  # for real requests, set this to true and apply again.
-  origin_verify_enforced = false
+  # Enforced since 2026-09-28. It went out off first, because CloudFront takes minutes to start
+  # sending a new header and the Lambda's configuration changes in seconds; it was switched on once
+  # a request through CloudFront was seen to carry it and only a direct one was reported. If the
+  # secret is ever rotated, set this to false for the apply that rotates it, then back.
+  origin_verify_enforced = true
 }
