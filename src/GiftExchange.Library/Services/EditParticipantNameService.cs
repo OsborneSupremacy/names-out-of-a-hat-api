@@ -77,6 +77,12 @@ internal class EditParticipantNameService : IApiGatewayHandler
                 {
                     { "participant name", request.Name }
                 },
+                StoredValues = hat => new Dictionary<string, string>
+                {
+                    ["participant name"] = hat.Participants
+                        .FirstOrDefault(candidate => candidate.Person.Email.ContentEquals(request.Email))?
+                        .Person.Name ?? string.Empty
+                },
                 ValidHatStatuses = HatStatuses.All
             })
             .ConfigureAwait(false);

@@ -275,7 +275,7 @@ All three are keyed by the organizer's inbox rather than by how they spelled it.
 
 ### User content is moderated, and fails closed
 
-Free-text fields go through Amazon Comprehend's toxicity detection. If the check can't be performed, the content is rejected rather than accepted.
+Free-text fields go through Amazon Comprehend's toxicity detection. If the check can't be performed, the content is rejected rather than accepted. Each check is a paid call, so it happens only once the exchange has been found, belongs to the caller and can take the change, and only for text that differs from what's stored: saving a form without touching a field doesn't check it again. The API stage also has a ceiling of ten requests a second, bursting to 25, across the routes that have no limit of their own.
 
 Moderation catches abuse, not scams, and a polite "claim your gift card here" passes it. So nothing an organizer writes that goes out in mail may contain a link: the exchange's name, price range and instructions, the organizer's name, or a participant's name. Those go from this domain to addresses the organizer chose, to people who asked for nothing, which makes a link there the most useful thing a phisher could get this application to send. Shared gift ideas can still carry links, for the reasons given below.
 

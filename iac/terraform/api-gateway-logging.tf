@@ -45,6 +45,18 @@ resource "aws_api_gateway_method_settings" "all" {
     metrics_enabled    = true
     logging_level      = "INFO"
     data_trace_enabled = false
+
+    # A ceiling on the whole stage, for the authenticated routes that have no throttle of their
+    # own. Each edit of an exchange or a name costs a Comprehend call, and a session is all it takes
+    # to loop one. The web ACL already holds any one IP to a request a second; this bounds what many
+    # of them can spend together. The busiest minute in the two weeks before this was set held 49
+    # requests, so ten a second with bursts of 25 is well clear of anybody using the site.
+    #
+    # Shared by everybody, so reaching it throttles real organizers too. That is the point of a
+    # ceiling on cost, and the routes with their own settings (auth, ask, ideas, offer, leave,
+    # invitation, feedback) keep them.
+    throttling_rate_limit  = 10
+    throttling_burst_limit = 25
   }
 
   depends_on = [

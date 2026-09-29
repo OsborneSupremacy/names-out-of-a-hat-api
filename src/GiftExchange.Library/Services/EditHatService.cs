@@ -38,6 +38,12 @@ internal class EditHatService : IApiGatewayHandler
                     ["additional information"] = request.AdditionalInformation,
                     ["price range"] = request.PriceRange
                 },
+                StoredValues = hat => new Dictionary<string, string>
+                {
+                    ["gift exchange name"] = hat.Name,
+                    ["additional information"] = hat.AdditionalInformation,
+                    ["price range"] = hat.PriceRange
+                },
                 ValidHatStatuses = [HatStatus.InProgress, HatStatus.ReadyForAssignment, HatStatus.NamesAssigned]
             })
             .ConfigureAwait(false);

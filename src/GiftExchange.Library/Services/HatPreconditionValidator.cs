@@ -20,14 +20,14 @@ internal class HatPreconditionValidator
                                     throw new ArgumentNullException(nameof(contentModerationService));
     }
 
+    /// <remarks>
+    /// Moderation comes last, after the exchange has been found and its status checked. It used to
+    /// come first, which meant any signed-in caller could spend a Comprehend call on an exchange id
+    /// they made up, and be told "not found" only afterwards. Now only the organizer of a real
+    /// exchange that can take the change gets that far, and only for text that changed.
+    /// </remarks>
     public async Task<HatPreconditionResponse> ValidateAsync(HatPreconditionRequest request)
     {
-        var moderationResponse = await ModerateAsync(request)
-            .ConfigureAwait(false);
-
-        if(!moderationResponse.PreconditionsMet)
-            return moderationResponse;
-
         var (hatExists, hat) = await _giftExchangeProvider
             .GetHatAsync(request.OrganizerEmail, request.HatId)
             .ConfigureAwait(false);
@@ -44,31 +44,47 @@ internal class HatPreconditionValidator
                 Hat = Hats.Empty
             };
 
-        if (request.ValidHatStatuses.Contains(hat.Status))
+        if (!request.ValidHatStatuses.Contains(hat.Status))
+        {
+            _logger.LogError("Hat status {HatStatus} is not valid for this operation. Valid statuses are {ValidStatuses}", hat.Status, string.Join(',', request.ValidHatStatuses));
             return new HatPreconditionResponse
             {
-                PreconditionsMet = true,
-                PreconditionFailureMessage = PreconditionFailureMessages.Empty,
-                Hat = hat
+                PreconditionsMet = false,
+                PreconditionFailureMessage = new PreconditionFailureMessage
+                {
+                    StatusCode = HttpStatusCode.Conflict,
+                    FailureMessage = $"Hat status {hat.Status} is not valid for this operation"
+                },
+                Hat = Hats.Empty
             };
+        }
 
-        _logger.LogError("Hat status {HatStatus} is not valid for this operation. Valid statuses are {ValidStatuses}", hat.Status, string.Join(',', request.ValidHatStatuses));
+        var moderationResponse = await ModerateAsync(ChangedFields(request, hat))
+            .ConfigureAwait(false);
+
+        if (!moderationResponse.PreconditionsMet)
+            return moderationResponse;
+
         return new HatPreconditionResponse
         {
-            PreconditionsMet = false,
-            PreconditionFailureMessage = new PreconditionFailureMessage
-            {
-                StatusCode = HttpStatusCode.Conflict,
-                FailureMessage = $"Hat status {hat.Status} is not valid for this operation"
-            },
-            Hat = Hats.Empty
+            PreconditionsMet = true,
+            PreconditionFailureMessage = PreconditionFailureMessages.Empty,
+            Hat = hat
         };
-
     }
 
-    private async Task<HatPreconditionResponse> ModerateAsync(HatPreconditionRequest request)
+    private static Dictionary<string, string> ChangedFields(HatPreconditionRequest request, Hat hat)
     {
-        if (!request.FieldsToModerate.Any())
+        var stored = request.StoredValues(hat);
+
+        return request.FieldsToModerate
+            .Where(field => !stored.TryGetValue(field.Key, out var current) || current != field.Value)
+            .ToDictionary(field => field.Key, field => field.Value);
+    }
+
+    private async Task<HatPreconditionResponse> ModerateAsync(Dictionary<string, string> fieldsToModerate)
+    {
+        if (fieldsToModerate.Count == 0)
             return new HatPreconditionResponse
             {
                 PreconditionsMet = true,
@@ -77,7 +93,7 @@ internal class HatPreconditionValidator
             };
 
         var (isAcceptable, errorMessage) = await _contentModerationService
-            .ValidateMultipleFieldsAsync(request.FieldsToModerate)
+            .ValidateMultipleFieldsAsync(fieldsToModerate)
             .ConfigureAwait(false);
 
         if (!isAcceptable)

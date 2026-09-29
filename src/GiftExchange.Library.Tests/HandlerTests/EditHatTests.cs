@@ -17,6 +17,8 @@ public class EditHatTests
 
     private readonly IApiGatewayHandler _sut;
 
+    private readonly FakeContentModerationService _moderation;
+
     public EditHatTests(PostgresFixture dbFixture)
     {
         DotEnv.Load();
@@ -39,6 +41,7 @@ public class EditHatTests
         _testDataService = new TestDataService(_provider);
 
         _sut = serviceProvider.GetRequiredKeyedService<IApiGatewayHandler>("put/hat");
+        _moderation = (FakeContentModerationService)serviceProvider.GetRequiredService<IContentModerationService>();
     }
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
@@ -169,6 +172,52 @@ public class EditHatTests
     /// faked hat. Faked words can carry punctuation the validators refuse, which would fail an
     /// arranging edit at random and leave the test asserting about a date that was never saved.
     /// </remarks>
+    [Fact]
+    public async Task EditHat_SavedUnchanged_ModeratesNothing()
+    {
+        // arrange
+        var hat = await _testDataService.CreateTestHatAsync();
+        (await SendAsync(Edit(hat))).StatusCode.Should().Be((int)HttpStatusCode.OK);
+        _moderation.ValidatedFieldSets.Clear();
+
+        // act: the same save again, which is what a form does when only the date moved.
+        var response = await SendAsync(Edit(hat));
+
+        // assert: text already checked when it was saved costs nothing to keep.
+        response.StatusCode.Should().Be((int)HttpStatusCode.OK);
+        _moderation.ValidatedFieldSets.SelectMany(fields => fields.Keys).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task EditHat_OneFieldChanged_ModeratesOnlyThatField()
+    {
+        // arrange
+        var hat = await _testDataService.CreateTestHatAsync();
+        (await SendAsync(Edit(hat))).StatusCode.Should().Be((int)HttpStatusCode.OK);
+        _moderation.ValidatedFieldSets.Clear();
+
+        // act
+        await SendAsync(Edit(hat) with { PriceRange = "$40" });
+
+        // assert
+        _moderation.ValidatedFieldSets.SelectMany(fields => fields.Keys).Should().Equal("price range");
+    }
+
+    [Fact]
+    public async Task EditHat_UnknownExchange_IsNotModerated()
+    {
+        // arrange
+        var hat = await _testDataService.CreateTestHatAsync();
+        _moderation.ValidatedFieldSets.Clear();
+
+        // act: an id the caller made up, with text that would otherwise be checked.
+        var response = await SendAsync(Edit(hat) with { HatId = Guid.NewGuid(), Name = "Something new" });
+
+        // assert: found wanting before anything was spent on it.
+        response.StatusCode.Should().Be((int)HttpStatusCode.NotFound);
+        _moderation.ValidatedFieldSets.Should().BeEmpty();
+    }
+
     private static EditHatRequest Edit(Hat hat) => new()
     {
         OrganizerEmail = hat.Organizer.Email,
