@@ -197,7 +197,7 @@ public class DeliveryEventsServiceTests
 
         // assert
         (await BlockedAnywhereCountAsync(email)).Should().Be(1);
-        (await _provider.FindBlockedAnywhereAsync([email.Trim().ToLowerInvariant()])).Should().ContainSingle();
+        (await _provider.FindBlockedAnywhereAsync([email.ToMailboxKey()])).Should().ContainSingle();
     }
 
     /// <summary>

@@ -165,7 +165,7 @@ Leaving removes the participant, and — while invitations are the operative one
 
 Removing somebody achieves nothing if the organizer can type the address straight back in — and being asked to draw names again is exactly what sends them to the participant list. So leaving records a refusal, and the leave page offers two more: this exchange (always), this organizer, or gift exchanges altogether.
 
-Three tables rather than one with a scope column. DSQL can't `ALTER COLUMN`, so a column that starts nullable stays nullable, and a nullable scope is how the wrong row eventually gets matched. Addresses are stored lower-cased and trimmed and every index leads with that column, so all three checks are the same predicate shape and run concurrently — each provider method opens its own `DbContext`, which is what makes `Task.WhenAll` over them safe.
+Three tables rather than one with a scope column. DSQL can't `ALTER COLUMN`, so a column that starts nullable stays nullable, and a nullable scope is how the wrong row eventually gets matched. Addresses are stored as a mailbox key (lower-cased, trimmed, without a `+tag`, and for Gmail without dots), so a refusal holds for every spelling that reaches the same inbox, and every index leads with that column, so all three checks are the same predicate shape and run concurrently — each provider method opens its own `DbContext`, which is what makes `Task.WhenAll` over them safe.
 
 Every path that puts an address into an exchange consults them: adding a participant, correcting a participant's address, and copying a finished exchange. A copy drops the people who refused rather than failing, and reports how many were left out without saying who — an organizer holding both lists could subtract one from the other.
 

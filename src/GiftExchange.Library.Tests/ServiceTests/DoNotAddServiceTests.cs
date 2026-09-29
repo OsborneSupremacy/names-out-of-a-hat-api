@@ -122,6 +122,30 @@ public class DoNotAddServiceTests
     }
 
     [Theory]
+    // Every one of these delivers to the inbox that refused, so re-adding under any of them would
+    // put the invitation in front of the person who asked never to get one.
+    [InlineData("alice.smith+work@gmail.com", "alice.smith+hat@gmail.com")]
+    [InlineData("alice.smith@gmail.com", "alicesmith@googlemail.com")]
+    [InlineData("alice+work@example.com", "alice@example.com")]
+    public async Task RefusingEverything_CoversEverySpellingOfTheSameInbox(string refusedAs, string addedAs)
+    {
+        // arrange: unique local parts, since the lists are shared by the whole suite.
+        var unique = Guid.CreateVersion7().ToString("N");
+        refusedAs = refusedAs.Replace("alice", $"alice{unique}");
+        addedAs = addedAs.Replace("alice", $"alice{unique}");
+
+        var left = await SeedHatAsync();
+        var strangers = await SeedHatAsync();
+        await RecordAsync(left, refusedAs, blockAnywhere: true);
+
+        // act
+        var refused = await _sut.IsRefusedAsync(addedAs, strangers.OrganizerEmail, strangers.HatId);
+
+        // assert
+        refused.Should().BeTrue();
+    }
+
+    [Theory]
     // The address is stored lower-cased and trimmed, so none of these is a different person from
     // the one who refused. An organizer retyping an address from memory produces exactly these.
     [InlineData("upper")]

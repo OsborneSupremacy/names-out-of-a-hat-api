@@ -1774,3 +1774,101 @@ databaseChangeLog:
         # error -- it only fails to match the spellings that were folded together.
         - sql:
             sql: SELECT 1
+
+  # Refusals become an inbox's rather than a spelling's. The three do-not-add lists move their
+  # email_normalized column to the mailbox key, so that somebody who asked never to be added again
+  # cannot be added back as their own +tag. Would-be duplicates under each unique index are merged
+  # first, keeping the earliest, then each table is rewritten, one statement per changeset.
+
+  - changeSet:
+      id: do_not_add_to_exchange--0002
+      author: ben
+      comment: >
+        Merges the rows that do_not_add_to_exchange--0003 would otherwise turn into duplicates under
+        the table's unique index, keeping the earliest.
+      changes:
+        - sqlFile:
+            path: tables/do_not_add_to_exchange--0002.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back, for the reason organizer_send--0002 gives.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: do_not_add_to_exchange--0003
+      author: ben
+      comment: >
+        The refused address, from a spelling to a mailbox key.
+      changes:
+        - sqlFile:
+            path: tables/do_not_add_to_exchange--0003.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back, for the reason organizer_send--0002 gives.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: do_not_add_anywhere--0002
+      author: ben
+      comment: >
+        Merges the rows that do_not_add_anywhere--0003 would otherwise turn into duplicates under
+        the table's unique index, keeping the earliest.
+      changes:
+        - sqlFile:
+            path: tables/do_not_add_anywhere--0002.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back, for the reason organizer_send--0002 gives.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: do_not_add_anywhere--0003
+      author: ben
+      comment: >
+        The refused address, from a spelling to a mailbox key.
+      changes:
+        - sqlFile:
+            path: tables/do_not_add_anywhere--0003.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back, for the reason organizer_send--0002 gives.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: do_not_add_by_organizer--0004
+      author: ben
+      comment: >
+        Merges the rows that do_not_add_by_organizer--0005 would otherwise turn into duplicates
+        under the table's unique index, keeping the earliest.
+      changes:
+        - sqlFile:
+            path: tables/do_not_add_by_organizer--0004.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back, for the reason organizer_send--0002 gives.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: do_not_add_by_organizer--0005
+      author: ben
+      comment: >
+        The refused address, from a spelling to a mailbox key.
+      changes:
+        - sqlFile:
+            path: tables/do_not_add_by_organizer--0005.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back, for the reason organizer_send--0002 gives.
+        - sql:
+            sql: SELECT 1

@@ -210,7 +210,7 @@ public class GiftExchangeProvider
                 // list they joined for somebody else's is not a reason to remove them from it.
                 var carriedOver = source.Participants
                     .Where(participant => participant.PersonId == organizerPersonId
-                                          || !request.RefusedEmails.Contains(participant.Person.Email.ToNormalizedEmail()))
+                                          || !request.RefusedEmails.Contains(participant.Person.Email.ToMailboxKey()))
                     .ToList();
 
                 // As in CreateHatAsync: the copy takes its first status as it is written, so both
@@ -1063,7 +1063,7 @@ public class GiftExchangeProvider
     /// Returns the blocked subset rather than a boolean, so the single-address callers and the
     /// copy-a-whole-exchange caller share one implementation.
     /// </remarks>
-    /// <param name="normalizedEmails">Addresses already through <c>ToNormalizedEmail</c>.</param>
+    /// <param name="normalizedEmails">Addresses already through <c>ToMailboxKey</c>.</param>
     public async Task<ImmutableList<string>> FindBlockedByExchangeAsync(
         ImmutableList<string> normalizedEmails,
         Guid hatId
@@ -1087,7 +1087,7 @@ public class GiftExchangeProvider
     /// <summary>
     /// Which of these addresses have refused this particular organizer, whatever the exchange.
     /// </summary>
-    /// <param name="normalizedEmails">Addresses already through <c>ToNormalizedEmail</c>.</param>
+    /// <param name="normalizedEmails">Addresses already through <c>ToMailboxKey</c>.</param>
     /// <param name="normalizedOrganizerEmail">The organizer's address, likewise.</param>
     public async Task<ImmutableList<string>> FindBlockedByOrganizerAsync(
         ImmutableList<string> normalizedEmails,
@@ -1113,7 +1113,7 @@ public class GiftExchangeProvider
     /// <summary>
     /// Which of these addresses have refused gift exchanges altogether.
     /// </summary>
-    /// <param name="normalizedEmails">Addresses already through <c>ToNormalizedEmail</c>.</param>
+    /// <param name="normalizedEmails">Addresses already through <c>ToMailboxKey</c>.</param>
     public async Task<ImmutableList<string>> FindBlockedAnywhereAsync(ImmutableList<string> normalizedEmails)
     {
         if (normalizedEmails.IsEmpty)
@@ -1161,7 +1161,9 @@ public class GiftExchangeProvider
     private Task RecordDoNotAddCoreAsync(RecordDoNotAddRequest request) =>
         InTransactionAsync(async context =>
         {
-            var email = request.Email.ToNormalizedEmail();
+            // By inbox, like the organizer: somebody who asked not to be added again must not be
+            // added back as their own +tag, which delivers to them all the same.
+            var email = request.Email.ToMailboxKey();
 
             if (string.IsNullOrWhiteSpace(email))
                 return;

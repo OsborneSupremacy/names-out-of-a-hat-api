@@ -166,7 +166,7 @@ internal class CopyHatService : IApiGatewayHandler
         // because an address can be on more than one of the three.
         var participantsOmitted = sourceHat.Participants
             .Count(participant => !participant.Person.Email.ContentEquals(sourceHat.Organizer.Email)
-                                  && refused.Contains(participant.Person.Email.ToNormalizedEmail()));
+                                  && refused.Contains(participant.Person.Email.ToMailboxKey()));
 
         return new Result<CopyHatResponse>(
             new CopyHatResponse { HatId = newHat.HatId, ParticipantsOmitted = participantsOmitted },

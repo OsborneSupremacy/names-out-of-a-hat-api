@@ -52,18 +52,19 @@ internal class DoNotAddService
     }
 
     /// <summary>
-    /// Which of these addresses may not be added, normalized.
+    /// Which of these addresses may not be added, as mailbox keys.
     /// </summary>
     /// <remarks>
-    /// Returns the normalized forms rather than the addresses as they were passed in, because that
-    /// is the only form in which two spellings of the same address are one thing. Callers comparing
-    /// against their own input should normalize it the same way; the single-address callers use
+    /// Returns the keys rather than the addresses as they were passed in, because that is the only
+    /// form in which two spellings of one inbox are one thing -- and a refusal is a person's, so
+    /// <c>me+1@</c> refusing has to refuse <c>me+2@</c> too. Callers comparing against their own
+    /// input should key it with <c>ToMailboxKey</c>; the single-address callers use
     /// <see cref="IsRefusedAsync"/> and never have to.
     /// </remarks>
     public async Task<ImmutableHashSet<string>> FindRefusedAsync(DoNotAddCheckRequest request)
     {
         var emails = request.Emails
-            .Select(email => email.ToNormalizedEmail())
+            .Select(email => email.ToMailboxKey())
             .Where(email => !string.IsNullOrWhiteSpace(email))
             .Distinct()
             .ToImmutableList();
