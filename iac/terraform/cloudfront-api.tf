@@ -68,7 +68,17 @@ resource "aws_cloudfront_distribution" "api" {
   ]
 }
 
-# This Web ACL is created and managed by AWS CloudFront
+# This Web ACL is created and managed by AWS CloudFront, as part of the distribution's Pro
+# flat-rate plan, and its rules are edited in the console rather than here: Terraform owning it
+# would put two writers on one rule list, and every change made in CloudFront's Security tab would
+# come back as drift for the next apply to undo.
+#
+# Rules as of 2026-09-28, beyond the five CloudFront created:
+#   signin-requestlink-per-ip -- POST /auth/requestlink, 10 per IP per 5 minutes, blocked with a
+#   429. Every request there can send mail to any address, so a script spraying made-up ones
+#   could bounce the SES account into a pause; the application's own limits are per inbox and
+#   cannot see that. The general 300-per-5-minutes rule would still let one IP send a link a
+#   second.
 data "aws_wafv2_web_acl" "cloudfront_managed_pro" {
   name  = "CreatedByCloudFront-5775ad2d"
   scope = "CLOUDFRONT"

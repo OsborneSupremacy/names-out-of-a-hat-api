@@ -143,6 +143,8 @@ It also sends from this domain to any address anybody types, so it's limited per
 
 Everything that limits strangers — the web ACL's per-IP rate rules, the geographic restriction — sits on the CloudFront distribution in front of the API, and the API Gateway endpoint behind it is public too. So CloudFront adds a secret `X-Origin-Verify` header, and the router refuses any request without it before building anything. Its value is in Terraform state, unlike the signing key, because CloudFront's own configuration carries it. That's acceptable because it proves only where a request came from.
 
+The web ACL also limits each IP to 10 link requests in 5 minutes, answered with a 429. The per-inbox limits can't see a script spraying thousands of made-up addresses, each of which bounces, and enough bounces pause SES for every message this application sends. The ACL belongs to the distribution's CloudFront Pro plan and is edited in the console, not Terraform; `iac/terraform/cloudfront-api.tf` lists the rules added to it.
+
 ### The Ask is two endpoints for one action, for the same reason
 
 The "ask for gift ideas" button lives in an email, so following it is a GET — and the same scanners would fire it on delivery. A GET that sent the request would mail somebody on behalf of a participant who hadn't yet read their invitation, and burn their throttle window doing it.
