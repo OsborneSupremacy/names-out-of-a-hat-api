@@ -11,7 +11,8 @@ public class DoNotAddByOrganizerEntity
     public required Guid DoNotAddByOrganizerId { get; set; }
 
     /// <summary>
-    /// The organizer being refused, lower-cased and trimmed.
+    /// The organizer being refused, as a mailbox key (see <c>ToMailboxKey</c>), so that a refusal
+    /// of <c>me+1@</c> is not escaped by becoming <c>me+2@</c>.
     /// </summary>
     /// <remarks>
     /// An address rather than a <see cref="PersonEntity.PersonId"/>, deliberately. The address is

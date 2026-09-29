@@ -12,6 +12,9 @@ public class Router
     private IServiceProvider? _serviceProvider;
     private readonly Lock _serviceProviderLock = new();
 
+    // Read once per container. The settings only change with a deployment, which starts new ones.
+    private readonly OriginGuard _originGuard = OriginGuard.FromEnvironment();
+
     public Router() { }
 
     protected Router(IServiceProvider serviceProvider)
@@ -38,6 +41,19 @@ public class Router
     )
     {
         var serviceKey = $"{request.HttpMethod}{request.Resource}".ToLowerInvariant();
+
+        // Before anything else, and before the service provider is built: a request that went
+        // around CloudFront has not been past the rate limits, and nothing it asks for should cost
+        // a database connection.
+        switch (_originGuard.Check(request.Headers))
+        {
+            case OriginVerdict.Refuse:
+                context.Logger.LogWarning($"Refused a request to {serviceKey} that did not come through CloudFront.");
+                return ProxyResponseBuilder.Build(HttpStatusCode.Forbidden);
+            case OriginVerdict.AllowButReport:
+                context.Logger.LogWarning($"A request to {serviceKey} did not come through CloudFront; allowed because the origin check is not enforced yet.");
+                break;
+        }
 
         // Read before the provider is built, because building it is what stops it being one.
         var isColdStart = _serviceProvider is null;

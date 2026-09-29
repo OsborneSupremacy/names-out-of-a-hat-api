@@ -71,7 +71,7 @@ internal class DoNotAddService
         if (emails.IsEmpty)
             return [];
 
-        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+        var organizerEmail = request.OrganizerEmail.ToMailboxKey();
 
         // Started together and awaited together. Nothing here depends on anything else here, and
         // the tasks are begun before the first await for that reason — writing them as three

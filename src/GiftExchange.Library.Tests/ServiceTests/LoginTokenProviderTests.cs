@@ -220,6 +220,60 @@ public class LoginTokenProviderTests
         CapturedPut().Item["PK"].S.Should().Be("LOGINTHROTTLE#ben@example.com");
     }
 
+    [Fact]
+    public async Task TryReserveRequestSlotAsync_KeysBothThrottlesOnTheInboxRatherThanTheSpelling()
+    {
+        // act: a +tag reaches the same inbox, so it must not buy that inbox another day of links.
+        await _sut.TryReserveRequestSlotAsync("Ben+hat@Example.com");
+
+        // assert
+        CapturedPut().Item["PK"].S.Should().Be("LOGINTHROTTLE#ben@example.com");
+        CapturedUpdate().Key["PK"].S.Should().Be($"LOGINDAY#ben@example.com#{DateTimeOffset.UtcNow.UtcDateTime:yyyy-MM-dd}");
+    }
+
+    [Fact]
+    public async Task TryReserveRequestSlotAsync_CountsAgainstTheDayOnlyUpToItsLimit()
+    {
+        // act
+        await _sut.TryReserveRequestSlotAsync("ben@example.com");
+
+        // assert: the check and the count are one conditional write, so two requests cannot both
+        // take the last slot.
+        var update = CapturedUpdate();
+
+        update.UpdateExpression.Should().Contain("ADD RequestCount :one");
+        update.ConditionExpression.Should().Be("attribute_not_exists(RequestCount) OR RequestCount < :limit");
+        update.ExpressionAttributeValues[":limit"].N.Should().Be(LoginTokenProvider.DailyLinkLimit.ToString());
+    }
+
+    [Fact]
+    public async Task TryReserveRequestSlotAsync_GivenADayThatHasHadItsFill_RefusesTheSlot()
+    {
+        // arrange
+        _dynamoDb.UpdateItemAsync(Arg.Any<UpdateItemRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ConditionalCheckFailedException("nope"));
+
+        // act
+        var reserved = await _sut.TryReserveRequestSlotAsync("ben@example.com");
+
+        // assert
+        reserved.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TryReserveRequestSlotAsync_GivenARequestInsideTheMinute_DoesNotSpendOneOfTheDays()
+    {
+        // arrange
+        _dynamoDb.PutItemAsync(Arg.Any<PutItemRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ConditionalCheckFailedException("nope"));
+
+        // act
+        await _sut.TryReserveRequestSlotAsync("ben@example.com");
+
+        // assert
+        await _dynamoDb.DidNotReceiveWithAnyArgs().UpdateItemAsync(default(UpdateItemRequest)!, default);
+    }
+
     private void GivenTheStoredItem(params (string Name, AttributeValue Value)[] attributes) =>
         _dynamoDb.DeleteItemAsync(Arg.Any<DeleteItemRequest>(), Arg.Any<CancellationToken>())
             .Returns(new DeleteItemResponse
@@ -237,6 +291,12 @@ public class LoginTokenProviderTests
         _dynamoDb.ReceivedCalls()
             .Select(call => call.GetArguments()[0])
             .OfType<PutItemRequest>()
+            .Last();
+
+    private UpdateItemRequest CapturedUpdate() =>
+        _dynamoDb.ReceivedCalls()
+            .Select(call => call.GetArguments()[0])
+            .OfType<UpdateItemRequest>()
             .Last();
 
     private DeleteItemRequest CapturedDelete() =>

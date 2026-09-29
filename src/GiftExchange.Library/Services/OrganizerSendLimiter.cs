@@ -58,7 +58,7 @@ internal class OrganizerSendLimiter
     /// </remarks>
     public async Task<OrganizerSendLimitResponse> CheckAsync(CheckOrganizerSendLimitRequest request)
     {
-        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+        var organizerEmail = request.OrganizerEmail.ToMailboxKey();
 
         var now = DateTimeOffset.UtcNow;
 
@@ -72,7 +72,7 @@ internal class OrganizerSendLimiter
 
         var recipients = request.RecipientEmails
             .Select(email => email.ToNormalizedEmail())
-            .Where(email => !string.IsNullOrWhiteSpace(email) && email != organizerEmail)
+            .Where(email => !string.IsNullOrWhiteSpace(email) && email.ToMailboxKey() != organizerEmail)
             .Distinct()
             .ToImmutableList();
 

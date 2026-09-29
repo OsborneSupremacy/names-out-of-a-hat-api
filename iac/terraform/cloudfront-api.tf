@@ -11,6 +11,13 @@ resource "aws_cloudfront_distribution" "api" {
     origin_id   = "APIGateway-${aws_api_gateway_rest_api.giftexchange-gateway.id}"
     origin_path = "/${aws_api_gateway_stage.live-stage.stage_name}"
 
+    # Proves to the application that a request came through here, and so past the web ACL and the
+    # geographic restriction. See OriginGuard.
+    custom_header {
+      name  = "X-Origin-Verify"
+      value = random_password.origin_verify.result
+    }
+
     custom_origin_config {
       http_port                = 80
       https_port               = 443
@@ -67,3 +74,22 @@ data "aws_wafv2_web_acl" "cloudfront_managed_pro" {
   scope = "CLOUDFRONT"
 }
 
+
+# The value CloudFront presents to the API on every request, and OriginGuard checks for.
+#
+# Unlike the session signing key, this one has to be in Terraform state: CloudFront's own
+# configuration carries it, and Terraform owns that. It is acceptable there because all it can do is
+# let a request past the check that it came through CloudFront -- it signs nothing and identifies
+# nobody. Rotate it by tainting this resource and applying.
+resource "random_password" "origin_verify" {
+  length  = 48
+  special = false
+}
+
+locals {
+  # Off for the first apply, which introduces the header: CloudFront takes minutes to start sending
+  # it and the Lambda's configuration changes in seconds, so enforcing straight away would refuse
+  # real traffic in between. Once the router has stopped logging "did not come through CloudFront"
+  # for real requests, set this to true and apply again.
+  origin_verify_enforced = false
+}

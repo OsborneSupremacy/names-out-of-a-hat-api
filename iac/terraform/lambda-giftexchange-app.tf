@@ -48,6 +48,10 @@ resource "aws_lambda_function" "giftexchange_app" {
         # Only the router queues data deletions; the function that carries them out reads the queue
         # through its event source mapping and never needs the URL.
         DATA_DELETION_QUEUE_URL = aws_sqs_queue.data-deletion-queue.url
+
+        # Only the router answers API Gateway, so only the router checks where a request came from.
+        ORIGIN_VERIFY_SECRET   = random_password.origin_verify.result
+        ORIGIN_VERIFY_ENFORCED = tostring(local.origin_verify_enforced)
       }
     )
   }
@@ -101,7 +105,9 @@ resource "aws_iam_role_policy" "giftexchange_app_dynamodb_policy" {
         Effect = "Allow"
         Action = [
           "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
+          "dynamodb:DeleteItem",
+          # The daily sign-in link counter, which has to add to a count in place.
+          "dynamodb:UpdateItem"
         ]
         Resource = [aws_dynamodb_table.giftexchange.arn]
       }

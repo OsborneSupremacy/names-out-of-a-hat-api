@@ -1645,3 +1645,132 @@ databaseChangeLog:
       rollback:
         - sql:
             sql: REVOKE SELECT, INSERT ON organizer_bounce FROM giftexchange_user
+
+  # Organizers become inboxes rather than spellings. The four tables that judge or refuse an
+  # organizer move their organizer column to the mailbox key ToMailboxKey computes, so that
+  # me+1@gmail.com and me+2@gmail.com stop being two organizers with two sets of limits. Each
+  # table with a unique index on the column has its would-be duplicates merged first, then every
+  # table is rewritten, one statement per changeset as DSQL requires.
+
+  - changeSet:
+      id: organizer_send--0002
+      author: ben
+      comment: >
+        The organizer column, from a spelling to a mailbox key. No unique index covers it, so
+        nothing needs merging first.
+      changes:
+        - sqlFile:
+            path: tables/organizer_send--0002.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back. The spellings the keys were made from are not kept, and a key is
+        # still a lower-cased, trimmed address, so the code before this change reads it without
+        # error -- it only fails to match the spellings that were folded together.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: organizer_bounce--0002
+      author: ben
+      comment: >
+        Merges the rows that organizer_bounce--0003 would otherwise turn into duplicates under the
+        table's unique index, keeping the earliest.
+      changes:
+        - sqlFile:
+            path: tables/organizer_bounce--0002.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back. The spellings the keys were made from are not kept, and a key is
+        # still a lower-cased, trimmed address, so the code before this change reads it without
+        # error -- it only fails to match the spellings that were folded together.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: organizer_bounce--0003
+      author: ben
+      comment: >
+        The organizer column, from a spelling to a mailbox key.
+      changes:
+        - sqlFile:
+            path: tables/organizer_bounce--0003.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back. The spellings the keys were made from are not kept, and a key is
+        # still a lower-cased, trimmed address, so the code before this change reads it without
+        # error -- it only fails to match the spellings that were folded together.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: organizer_complaint--0002
+      author: ben
+      comment: >
+        Merges the rows that organizer_complaint--0003 would otherwise turn into duplicates under
+        the table's unique index, keeping the earliest.
+      changes:
+        - sqlFile:
+            path: tables/organizer_complaint--0002.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back. The spellings the keys were made from are not kept, and a key is
+        # still a lower-cased, trimmed address, so the code before this change reads it without
+        # error -- it only fails to match the spellings that were folded together.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: organizer_complaint--0003
+      author: ben
+      comment: >
+        The organizer column, from a spelling to a mailbox key.
+      changes:
+        - sqlFile:
+            path: tables/organizer_complaint--0003.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back. The spellings the keys were made from are not kept, and a key is
+        # still a lower-cased, trimmed address, so the code before this change reads it without
+        # error -- it only fails to match the spellings that were folded together.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: do_not_add_by_organizer--0002
+      author: ben
+      comment: >
+        Merges the rows that do_not_add_by_organizer--0003 would otherwise turn into duplicates
+        under the table's unique index, keeping the earliest.
+      changes:
+        - sqlFile:
+            path: tables/do_not_add_by_organizer--0002.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back. The spellings the keys were made from are not kept, and a key is
+        # still a lower-cased, trimmed address, so the code before this change reads it without
+        # error -- it only fails to match the spellings that were folded together.
+        - sql:
+            sql: SELECT 1
+
+  - changeSet:
+      id: do_not_add_by_organizer--0003
+      author: ben
+      comment: >
+        The organizer column, from a spelling to a mailbox key.
+      changes:
+        - sqlFile:
+            path: tables/do_not_add_by_organizer--0003.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back. The spellings the keys were made from are not kept, and a key is
+        # still a lower-cased, trimmed address, so the code before this change reads it without
+        # error -- it only fails to match the spellings that were folded together.
+        - sql:
+            sql: SELECT 1

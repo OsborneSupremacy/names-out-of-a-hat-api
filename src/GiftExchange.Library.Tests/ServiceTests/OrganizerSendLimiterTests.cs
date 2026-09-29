@@ -17,6 +17,8 @@ public class OrganizerSendLimiterTests
 
     private readonly OrganizerSendLimiter _sut;
 
+    private readonly GiftExchangeProvider _giftExchangeProvider;
+
     public OrganizerSendLimiterTests(PostgresFixture dbFixture)
     {
         _contextFactory = dbFixture.CreateContextFactory();
@@ -28,6 +30,7 @@ public class OrganizerSendLimiterTests
             .BuildServiceProvider();
 
         _sut = serviceProvider.GetRequiredService<OrganizerSendLimiter>();
+        _giftExchangeProvider = serviceProvider.GetRequiredService<GiftExchangeProvider>();
     }
 
     [Fact]
@@ -181,6 +184,26 @@ public class OrganizerSendLimiterTests
 
         // assert
         result.WithinLimit.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AnotherSpellingOfTheSameInbox_SharesItsLimit()
+    {
+        // arrange: a day's worth sent as one +tag, through the path the send service uses.
+        var inbox = $"organizer-{Guid.NewGuid():N}";
+        await _giftExchangeProvider.RecordOrganizerSendsAsync(new RecordOrganizerSendsRequest
+        {
+            OrganizerEmail = $"{inbox}+first@example.com",
+            Recipients = [.. Addresses(OrganizerSendLimiter.DailyLimit)
+                .Select(email => new OrganizerSendRecipient { ParticipantId = Guid.NewGuid(), Email = email })],
+            SentAt = HoursAgo(1)
+        });
+
+        // act: the same inbox under a tag it has never used.
+        var result = await _sut.CheckAsync(Request($"{inbox}+second@example.com", Addresses(1)));
+
+        // assert
+        result.WithinLimit.Should().BeFalse();
     }
 
     private static CheckOrganizerSendLimitRequest Request(string organizer, ImmutableList<string> recipients) =>

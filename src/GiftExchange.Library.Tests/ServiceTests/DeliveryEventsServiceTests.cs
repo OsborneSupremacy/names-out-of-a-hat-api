@@ -1,6 +1,7 @@
 using Amazon.Lambda.SQSEvents;
 using GiftExchange.Library.Contexts;
 using GiftExchange.Library.Entities;
+using GiftExchange.Library.Extensions;
 
 namespace GiftExchange.Library.Tests.ServiceTests;
 
@@ -649,7 +650,7 @@ public class DeliveryEventsServiceTests
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
 
-        var normalized = organizerEmail.Trim().ToLowerInvariant();
+        var normalized = organizerEmail.ToMailboxKey();
 
         return await context.OrganizerComplaints
             .AsNoTracking()
@@ -661,7 +662,7 @@ public class DeliveryEventsServiceTests
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
 
-        var normalized = organizerEmail.Trim().ToLowerInvariant();
+        var normalized = organizerEmail.ToMailboxKey();
 
         return await context.OrganizerBounces
             .AsNoTracking()

@@ -17,6 +17,7 @@ internal class CopyHatRequestValidator : AbstractValidator<CopyHatRequest>
             .NotEmpty()
             .Length(3, 50)
             .Matches(@"^[\p{L}\p{N}\s\-'.,&()]+$")
-            .WithMessage("'New Hat Name' must only contain letters, numbers, spaces, and common punctuation.");
+            .WithMessage("'New Hat Name' must only contain letters, numbers, spaces, and common punctuation.")
+            .NotContainLinks();
     }
 }

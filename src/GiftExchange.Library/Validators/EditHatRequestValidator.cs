@@ -16,18 +16,21 @@ public class EditHatRequestValidator : AbstractValidator<EditHatRequest>
             .NotEmpty()
             .Length(3, 50)
             .Matches(@"^[\p{L}\p{N}\s\-'.,&()]+$")
-            .WithMessage("'Name' must only contain letters, numbers, spaces, and common punctuation.");
+            .WithMessage("'Name' must only contain letters, numbers, spaces, and common punctuation.")
+            .NotContainLinks();
 
         RuleFor(x => x.AdditionalInformation)
             .MaximumLength(2000)
             .Must(x => string.IsNullOrEmpty(x) || (!x.Contains('<') && !x.Contains('>') && !x.Contains('\0')))
-            .WithMessage("'Additional Information' must not contain HTML or control characters.");
+            .WithMessage("'Additional Information' must not contain HTML or control characters.")
+            .NotContainLinks();
 
         RuleFor(x => x.PriceRange)
             .MaximumLength(50)
             .Matches(@"^[\p{L}\p{N}\s\-$€£¥.,/]+$")
             .When(x => !string.IsNullOrEmpty(x.PriceRange))
-            .WithMessage("'Price Range' must only contain letters, numbers, spaces, currency symbols, and common punctuation.");
+            .WithMessage("'Price Range' must only contain letters, numbers, spaces, currency symbols, and common punctuation.")
+            .NotContainLinks();
 
         // Only the far bound is checked here. Whether a date is too early depends on what was
         // stored before -- a date that has passed is fine to keep, and wrong to set -- so that

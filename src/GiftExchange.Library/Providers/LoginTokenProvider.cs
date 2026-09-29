@@ -13,6 +13,21 @@ internal class LoginTokenProvider
 
     private static readonly TimeSpan ThrottleWindow = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// The most sign-in links one inbox is sent in a UTC day.
+    /// </summary>
+    /// <remarks>
+    /// The per-minute throttle alone still let one inbox be sent 1,440 links a day, from our domain,
+    /// by anybody who knew the address -- and every one that was reported as spam counted against
+    /// the SES account that invitations share. Nobody signing in for themselves asks ten times in a
+    /// day.
+    ///
+    /// The cost is the other way round: somebody who wanted to could use up an inbox's ten and keep
+    /// its owner out until midnight UTC. That is a nuisance to one person, where the flood was a
+    /// nuisance to them and a risk to everybody's mail, and it is the trade this makes.
+    /// </remarks>
+    internal const int DailyLinkLimit = 10;
+
     private readonly IAmazonDynamoDB _dynamoDbClient;
 
     private readonly string _tableName;
@@ -91,12 +106,28 @@ internal class LoginTokenProvider
     }
 
     /// <summary>
-    /// Per-address throttle for link requests. Without this the endpoint is an open email relay
-    /// pointed at arbitrary addresses, which is a deliverability and billing problem before it is
-    /// a security one.
+    /// Per-inbox throttle for link requests: one a minute, and <see cref="DailyLinkLimit"/> a day.
+    /// Without this the endpoint is an open email relay pointed at arbitrary addresses, which is a
+    /// deliverability and billing problem before it is a security one.
     /// </summary>
-    /// <returns>false when a link was already requested for this address inside the window.</returns>
+    /// <remarks>
+    /// Keyed by <c>ToMailboxKey</c> rather than by spelling, because both limits are about how
+    /// much mail lands in one inbox, and <c>me+1@</c>, <c>me+2@</c> and so on all land in the same
+    /// one.
+    ///
+    /// The minute is checked first so that a request refused by it does not also spend one of the
+    /// day's links.
+    /// </remarks>
+    /// <returns>false when this inbox may not be sent another link yet.</returns>
     public async Task<bool> TryReserveRequestSlotAsync(string email)
+    {
+        var mailbox = email.ToMailboxKey();
+
+        return await TryReserveMinuteSlotAsync(mailbox).ConfigureAwait(false)
+               && await TryReserveDailySlotAsync(mailbox).ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryReserveMinuteSlotAsync(string mailbox)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var expiresAt = DateTimeOffset.UtcNow.Add(ThrottleWindow).ToUnixTimeSeconds();
@@ -106,7 +137,7 @@ internal class LoginTokenProvider
             TableName = _tableName,
             Item = new Dictionary<string, AttributeValue>
             {
-                ["PK"] = new() { S = $"LOGINTHROTTLE#{NormalizeEmail(email)}" },
+                ["PK"] = new() { S = $"LOGINTHROTTLE#{mailbox}" },
                 ["SK"] = new() { S = "LOGINTHROTTLE" },
                 ["ExpiresAt"] = new() { N = expiresAt.ToString() },
                 ["ttl"] = new() { N = expiresAt.ToString() }
@@ -121,6 +152,54 @@ internal class LoginTokenProvider
         try
         {
             await _dynamoDbClient.PutItemAsync(request).ConfigureAwait(false);
+            return true;
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Counts one more link against the inbox's UTC day, unless the day has had its fill.
+    /// </summary>
+    /// <remarks>
+    /// One item per inbox per day, with the date in its key, so a new day is a new item and never
+    /// needs resetting. The count and the check are one conditional update, so two requests racing
+    /// cannot both take the last slot.
+    /// </remarks>
+    private async Task<bool> TryReserveDailySlotAsync(string mailbox)
+    {
+        var today = DateTimeOffset.UtcNow.UtcDateTime.Date;
+
+        // A day past the day it counts, so an item is never reaped while it can still refuse.
+        var expiresAt = new DateTimeOffset(today.AddDays(2), TimeSpan.Zero).ToUnixTimeSeconds();
+
+        var request = new UpdateItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["PK"] = new() { S = $"LOGINDAY#{mailbox}#{today:yyyy-MM-dd}" },
+                ["SK"] = new() { S = "LOGINDAY" }
+            },
+            UpdateExpression = "ADD RequestCount :one SET #ttl = if_not_exists(#ttl, :ttl)",
+            ConditionExpression = "attribute_not_exists(RequestCount) OR RequestCount < :limit",
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                ["#ttl"] = "ttl"
+            },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":one"] = new() { N = "1" },
+                [":limit"] = new() { N = DailyLinkLimit.ToString() },
+                [":ttl"] = new() { N = expiresAt.ToString() }
+            }
+        };
+
+        try
+        {
+            await _dynamoDbClient.UpdateItemAsync(request).ConfigureAwait(false);
             return true;
         }
         catch (ConditionalCheckFailedException)

@@ -13,6 +13,7 @@ public class UpdateProfileRequestValidator : AbstractValidator<UpdateProfileRequ
             .NotEmpty()
             .Length(2, 100)
             .Matches(@"^[\p{L}\p{N}\s\-'.,&()]+$")
-            .WithMessage("'Name' must only contain letters, numbers, spaces, and common punctuation.");
+            .WithMessage("'Name' must only contain letters, numbers, spaces, and common punctuation.")
+            .NotContainLinks();
     }
 }

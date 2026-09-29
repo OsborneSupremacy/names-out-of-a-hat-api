@@ -1,5 +1,6 @@
 using GiftExchange.Library.Contexts;
 using GiftExchange.Library.Entities;
+using GiftExchange.Library.Extensions;
 using GiftExchange.Library.Utility;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -295,7 +296,7 @@ public class EnqueueInvitationsServiceTests
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
 
-        var normalized = organizerEmail.Trim().ToLowerInvariant();
+        var normalized = organizerEmail.ToMailboxKey();
 
         return await context.OrganizerSends
             .AsNoTracking()
@@ -313,7 +314,7 @@ public class EnqueueInvitationsServiceTests
             {
                 OrganizerSendId = Guid.CreateVersion7(),
                 ParticipantId = Guid.NewGuid(),
-                OrganizerEmailNormalized = organizerEmail.Trim().ToLowerInvariant(),
+                OrganizerEmailNormalized = organizerEmail.ToMailboxKey(),
                 EmailNormalized = $"{Guid.NewGuid():N}@example.com",
                 SentAt = DateTimeOffset.UtcNow.AddHours(-1)
             }));
@@ -330,7 +331,7 @@ public class EnqueueInvitationsServiceTests
             .Select(_ => new OrganizerComplaintEntity
             {
                 OrganizerComplaintId = Guid.CreateVersion7(),
-                OrganizerEmailNormalized = organizerEmail.Trim().ToLowerInvariant(),
+                OrganizerEmailNormalized = organizerEmail.ToMailboxKey(),
                 EmailNormalized = $"{Guid.NewGuid():N}@example.com",
                 ComplainedAt = DateTimeOffset.UtcNow.AddDays(-1)
             }));

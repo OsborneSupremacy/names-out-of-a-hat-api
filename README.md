@@ -139,6 +139,10 @@ The tempting alternative — allowing a token to be used twice — was rejected.
 
 The request endpoint also always reports success, so it can't be used to find out which addresses have accounts.
 
+It also sends from this domain to any address anybody types, so it's limited per inbox, keyed like the organizer limits: one link a minute and ten a UTC day. Before the daily limit, one person could be sent 1,440 sign-in links a day, and every one they reported as spam counted against the SES account invitations share. The cost runs the other way now: somebody could spend an inbox's ten and keep its owner out until midnight UTC. That's the trade.
+
+Everything that limits strangers — the web ACL's per-IP rate rules, the geographic restriction — sits on the CloudFront distribution in front of the API, and the API Gateway endpoint behind it is public too. So CloudFront adds a secret `X-Origin-Verify` header, and the router refuses any request without it before building anything. Its value is in Terraform state, unlike the signing key, because CloudFront's own configuration carries it. That's acceptable because it proves only where a request came from.
+
 ### The Ask is two endpoints for one action, for the same reason
 
 The "ask for gift ideas" button lives in an email, so following it is a GET — and the same scanners would fire it on delivery. A GET that sent the request would mail somebody on behalf of a participant who hadn't yet read their invitation, and burn their throttle window doing it.
@@ -265,9 +269,13 @@ It lets a complaint or a bounce find its organizer after the exchange is gone. A
 
 And it gives bounces a denominator. The standing check that sits in front of every send path stops an organizer at 3 spam complaints, or at 5 people between complaints and "never add me again" requests, over 90 days. Those are absolute counts, which is safe because the cap already bounds how many people an organizer can reach. Hard bounces are judged as a share instead: an organizer is paused once at least 5 distinct addresses have bounced and those make up at least 10% of the people they mailed. That's SES's own threshold for pausing the whole account, applied to one organizer. A share is fair because a large exchange collects typos just by being large, and the minimum of 5 means one wrong address in a family of eight doesn't trip it. Transient bounces, like a full mailbox, don't count. The complaint and bounce records outlive the exchange just as the ledger does, and nothing in the application can clear them. The pause lifts when they age out of the window.
 
+All three are keyed by the organizer's inbox rather than by how they spelled it. Signing in takes nothing but an inbox, and `me+1@gmail.com`, `me+2@gmail.com` and `m.e@gmail.com` all deliver to the same one. Keyed by spelling, each was a fresh organizer with its own cap and a clean record. So the organizer column in the ledger, the complaint and bounce records and the "don't let this organizer add me" list holds a mailbox key: lower-cased and trimmed as before, without a `+tag`, and for Gmail without the dots Gmail ignores. It's a key and never an address. Nobody's exchanges, session or mail change, and an organizer's `+tag` stays theirs. A catch-all domain still yields as many inboxes as its owner wants, but that takes owning a domain, and the complaints it draws land on SES reputation the same way, so the standing check catches it the same way.
+
 ### User content is moderated, and fails closed
 
 Free-text fields go through Amazon Comprehend's toxicity detection. If the check can't be performed, the content is rejected rather than accepted.
+
+Moderation catches abuse, not scams, and a polite "claim your gift card here" passes it. So nothing an organizer writes that goes out in mail may contain a link: the exchange's name, price range and instructions, the organizer's name, or a participant's name. Those go from this domain to addresses the organizer chose, to people who asked for nothing, which makes a link there the most useful thing a phisher could get this application to send. Shared gift ideas can still carry links, for the reasons given below.
 
 ### The wire contract lives in the repo, not in an export
 

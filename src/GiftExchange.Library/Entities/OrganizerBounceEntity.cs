@@ -14,7 +14,8 @@ public class OrganizerBounceEntity
     public required Guid OrganizerBounceId { get; set; }
 
     /// <summary>
-    /// The organizer whose exchange sent the message, lower-cased and trimmed.
+    /// The organizer whose exchange sent the message, as a mailbox key (see
+    /// <c>ToMailboxKey</c>), so that one inbox answers for every spelling of it.
     /// </summary>
     /// <remarks>
     /// An address rather than a <see cref="PersonEntity.PersonId"/>, for the reason given on

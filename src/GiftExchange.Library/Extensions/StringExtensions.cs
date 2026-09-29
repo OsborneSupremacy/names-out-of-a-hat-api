@@ -31,6 +31,51 @@ internal static class StringExtensions
         public string ToNormalizedEmail() =>
             input.TrimNullSafe().ToLowerInvariant();
 
+        /// <summary>
+        /// The inbox an address delivers to, for the questions that are about a person rather than
+        /// a spelling: how much one organizer has sent, what has been held against them, and how
+        /// often one inbox can be sent a sign-in link.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ToNormalizedEmail"/>, then without a <c>+tag</c>, and for Gmail without the
+        /// dots Gmail ignores. Without this, <c>me+1@gmail.com</c> and <c>me+2@gmail.com</c> were two
+        /// organizers with two sets of limits and two clean records, and one inbox could hold as
+        /// many of them as it cared to invent.
+        ///
+        /// A key, never an address. Nothing is sent to it, and the address somebody signed in with
+        /// stays who they are: their exchanges, their session and their mail all keep the spelling
+        /// they typed. Two genuinely different people who differ only by a <c>+tag</c> at a provider
+        /// that treats <c>+</c> as an ordinary character would share limits, which is rare enough,
+        /// and harmless enough, to accept.
+        /// </remarks>
+        public string ToMailboxKey()
+        {
+            var normalized = input.ToNormalizedEmail();
+
+            var at = normalized.LastIndexOf('@');
+
+            if (at <= 0)
+                return normalized;
+
+            var local = normalized[..at];
+            var domain = normalized[(at + 1)..];
+
+            var plus = local.IndexOf('+');
+
+            if (plus > 0)
+                local = local[..plus];
+
+            if (domain is "gmail.com" or "googlemail.com")
+            {
+                local = local.Replace(".", string.Empty);
+                domain = "gmail.com";
+            }
+
+            return string.IsNullOrEmpty(local)
+                ? normalized
+                : $"{local}@{domain}";
+        }
+
         public static Guid ToGuidOrEmpty(string value) =>
             Guid.TryParse(value, out var guid) ? guid : Guid.Empty;
     }

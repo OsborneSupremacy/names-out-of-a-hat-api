@@ -1186,7 +1186,7 @@ public class GiftExchangeProvider
                     });
             }
 
-            var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+            var organizerEmail = request.OrganizerEmail.ToMailboxKey();
 
             if (request.BlockOrganizer && !string.IsNullOrWhiteSpace(organizerEmail))
             {
@@ -1278,7 +1278,7 @@ public class GiftExchangeProvider
                 return;
             }
 
-            if (organizerEmailNormalized == email)
+            if (organizerEmailNormalized == email.ToMailboxKey())
                 return;
 
             var alreadyRecorded = await context.OrganizerComplaints
@@ -1305,8 +1305,7 @@ public class GiftExchangeProvider
     }
 
     /// <summary>
-    /// Which organizer sent mail to this participant, lower-cased and trimmed, or empty if nothing
-    /// says.
+    /// Which organizer sent mail to this participant, as a mailbox key, or empty if nothing says.
     /// </summary>
     /// <remarks>
     /// The send ledger first, because it outlives the exchange: an organizer who sends and then
@@ -1333,7 +1332,7 @@ public class GiftExchangeProvider
             .SingleOrDefaultAsync()
             .ConfigureAwait(false);
 
-        return fromParticipant?.ToNormalizedEmail() ?? string.Empty;
+        return fromParticipant?.ToMailboxKey() ?? string.Empty;
     }
 
     /// <summary>
@@ -1383,7 +1382,7 @@ public class GiftExchangeProvider
                 return;
             }
 
-            if (organizerEmailNormalized == email)
+            if (organizerEmailNormalized == email.ToMailboxKey())
                 return;
 
             var alreadyRecorded = await context.OrganizerBounces
@@ -1423,7 +1422,7 @@ public class GiftExchangeProvider
     /// </remarks>
     internal async Task RecordOrganizerSendsAsync(RecordOrganizerSendsRequest request)
     {
-        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+        var organizerEmail = request.OrganizerEmail.ToMailboxKey();
 
         if (string.IsNullOrWhiteSpace(organizerEmail))
             return;
@@ -1432,7 +1431,7 @@ public class GiftExchangeProvider
             .Select(recipient => new { recipient.ParticipantId, Email = recipient.Email.ToNormalizedEmail() })
             .Where(recipient => recipient.ParticipantId != Guid.Empty
                                 && !string.IsNullOrWhiteSpace(recipient.Email)
-                                && recipient.Email != organizerEmail)
+                                && recipient.Email.ToMailboxKey() != organizerEmail)
             .ToList();
 
         if (rows.Count == 0)
@@ -1467,7 +1466,7 @@ public class GiftExchangeProvider
         ListOrganizerRecipientsRequest request
     )
     {
-        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+        var organizerEmail = request.OrganizerEmail.ToMailboxKey();
 
         if (string.IsNullOrWhiteSpace(organizerEmail))
             return new ListOrganizerRecipientsResponse { LastSentAt = ImmutableDictionary<string, DateTimeOffset>.Empty };
@@ -1502,7 +1501,7 @@ public class GiftExchangeProvider
         CountOrganizerRefusalsRequest request
     )
     {
-        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+        var organizerEmail = request.OrganizerEmail.ToMailboxKey();
 
         if (string.IsNullOrWhiteSpace(organizerEmail))
             return new CountOrganizerBouncesResponse { Bounced = 0, Recipients = 0 };
@@ -1590,7 +1589,7 @@ public class GiftExchangeProvider
         CountOrganizerRefusalsRequest request
     )
     {
-        var organizerEmail = request.OrganizerEmail.ToNormalizedEmail();
+        var organizerEmail = request.OrganizerEmail.ToMailboxKey();
 
         if (string.IsNullOrWhiteSpace(organizerEmail))
             return new CountOrganizerRefusalsResponse { Complaints = 0, Refusals = 0 };
