@@ -96,15 +96,14 @@ internal class ViewInvitationService : IApiGatewayHandler
         {
             StatusCode = (int)HttpStatusCode.OK,
             Body = html,
-            Headers = new Dictionary<string, string>
+            Headers = EmailLinkedPage.Headers(new Dictionary<string, string>
             {
-                ["Content-Type"] = "text/html; charset=utf-8",
                 // It names who this person drew. Nothing between them and us should keep a copy.
                 ["Cache-Control"] = "no-store",
                 ["X-Robots-Tag"] = "noindex",
                 // The token is in the address, and the page links out to the site and to the
                 // organizer's address.
                 ["Referrer-Policy"] = "no-referrer"
-            }
+            })
         };
 }

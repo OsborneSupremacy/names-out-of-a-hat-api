@@ -9,6 +9,14 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
 
 # Viewer-request rewrite that puts SPA routes onto /index.html. See the function's own file for
 # why this is done here rather than with custom error responses.
+resource "aws_cloudfront_function" "frontend_security_headers" {
+  name    = "frontend-security-headers"
+  runtime = "cloudfront-js-2.0"
+  comment = "Adds CSP, HSTS and the other security headers to every site response"
+  publish = true
+  code    = file("${path.module}/functions/frontend-security-headers.js")
+}
+
 resource "aws_cloudfront_function" "frontend_spa_router" {
   name    = "frontend-spa-router"
   runtime = "cloudfront-js-2.0"
@@ -43,6 +51,13 @@ resource "aws_cloudfront_distribution" "frontend" {
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.frontend_spa_router.arn
+    }
+
+    # On the way out, for every response including errors. See the function for why it is not a
+    # response headers policy.
+    function_association {
+      event_type   = "viewer-response"
+      function_arn = aws_cloudfront_function.frontend_security_headers.arn
     }
   }
 

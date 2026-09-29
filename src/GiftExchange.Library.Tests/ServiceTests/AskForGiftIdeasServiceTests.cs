@@ -527,6 +527,23 @@ public class AskForGiftIdeasServiceTests
     }
 
     [Fact]
+    public async Task Get_MayRunNoScriptAndPostOnlyBackHere()
+    {
+        // arrange
+        var exchange = await SeedAsync();
+
+        // act
+        var response = await _sut.FunctionHandler(Request("GET", exchange.AlphaToken), new FakeLambdaContext());
+
+        // assert: the page has no script of its own, so anything that slipped past encoding would
+        // still have nothing to run, and its form cannot be pointed anywhere else.
+        response.Headers["Content-Security-Policy"].Should().Be(EmailLinkedPage.ContentSecurityPolicy);
+        response.Headers["Content-Security-Policy"].Should().Contain("default-src 'none'").And.Contain("form-action 'self'");
+        response.Headers["X-Content-Type-Options"].Should().Be("nosniff");
+        response.Headers["Referrer-Policy"].Should().Be("no-referrer");
+    }
+
+    [Fact]
     public async Task Post_RecordsThatTheAskerAskedAboutTheirPick()
     {
         // arrange

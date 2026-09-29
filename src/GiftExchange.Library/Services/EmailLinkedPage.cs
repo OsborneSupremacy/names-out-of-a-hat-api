@@ -23,6 +23,44 @@ namespace GiftExchange.Library.Services;
 /// </remarks>
 internal static class EmailLinkedPage
 {
+    /// <summary>
+    /// What every page in this shell may load, which is almost nothing: its inline styles, the
+    /// wordmark from the site, and a form that posts back to where it came from. No script at all,
+    /// so markup that ever slipped past encoding would still have nothing to run.
+    /// </summary>
+    internal const string ContentSecurityPolicy =
+        "default-src 'none'; " +
+        $"img-src {Branding.SiteUrl}; " +
+        "style-src 'unsafe-inline'; " +
+        "form-action 'self'; " +
+        "frame-ancestors 'none'; " +
+        "base-uri 'none'";
+
+    /// <summary>
+    /// The headers every page in this shell is served with, plus the page's own.
+    /// </summary>
+    /// <remarks>
+    /// In one place so a page cannot be added without them. The referrer is withheld for all of
+    /// them, not only the invitation, because every one of these pages carries a token in its
+    /// address. A page's own header wins over one of these if both name it.
+    /// </remarks>
+    internal static Dictionary<string, string> Headers(Dictionary<string, string> ownHeaders)
+    {
+        var headers = new Dictionary<string, string>
+        {
+            ["Content-Type"] = "text/html; charset=utf-8",
+            ["Content-Security-Policy"] = ContentSecurityPolicy,
+            ["X-Content-Type-Options"] = "nosniff",
+            ["Referrer-Policy"] = "no-referrer",
+            ["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        };
+
+        foreach (var (name, value) in ownHeaders)
+            headers[name] = value;
+
+        return headers;
+    }
+
     /// <param name="heading">This application's own words. Encoded here all the same.</param>
     /// <param name="body">
     /// Markup, so nothing anybody typed may be passed in unencoded. Every composer building this

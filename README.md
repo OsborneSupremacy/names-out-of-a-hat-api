@@ -279,6 +279,12 @@ Free-text fields go through Amazon Comprehend's toxicity detection. If the check
 
 Moderation catches abuse, not scams, and a polite "claim your gift card here" passes it. So nothing an organizer writes that goes out in mail may contain a link: the exchange's name, price range and instructions, the organizer's name, or a participant's name. Those go from this domain to addresses the organizer chose, to people who asked for nothing, which makes a link there the most useful thing a phisher could get this application to send. Shared gift ideas can still carry links, for the reasons given below.
 
+### Security headers come from a function, not a policy
+
+The session token sits in `localStorage` for two weeks, so the thing standing between an injected script and every session is the site's Content-Security-Policy: script only from the site itself, nothing inline, no `eval`, connections only to the API, and no framing. The site's distribution is on a CloudFront flat-rate plan, where custom response header policies start at the Business tier and the managed one sets no CSP, so a viewer-response CloudFront Function (`iac/terraform/functions/frontend-security-headers.js`) adds them to every response. The one loosening is `style-src-attr 'unsafe-inline'`, because the invitation preview renders the server's email HTML, whose styles are inline attributes.
+
+The pages the API serves from email links set their own, stricter still: no script at all, the wordmark as the only thing fetched, and forms that can post only back to the API.
+
 ### The wire contract lives in the repo, not in an export
 
 `GiftExchange.Library/Schemas/*.json` is the source of truth. Terraform uploads those as API Gateway models, and `SchemaDriftTests` holds them to the records the application actually serializes. A hand-maintained OpenAPI file used to live in `docs/` and spent most of its life describing an API that no longer existed. It's gone; see [src/README.md](src/README.md) for how to export the deployed description when you want one.

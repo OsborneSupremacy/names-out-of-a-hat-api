@@ -350,10 +350,9 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
         {
             StatusCode = (int)HttpStatusCode.OK,
             Body = html,
-            Headers = new Dictionary<string, string>
+            Headers = EmailLinkedPage.Headers(new Dictionary<string, string>
             {
-                ["Content-Type"] = "text/html; charset=utf-8",
                 ["Cache-Control"] = "no-store"
-            }
+            })
         };
 }

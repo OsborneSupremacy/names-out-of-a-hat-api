@@ -376,11 +376,10 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         {
             StatusCode = (int)HttpStatusCode.OK,
             Body = html,
-            Headers = new Dictionary<string, string>
+            Headers = EmailLinkedPage.Headers(new Dictionary<string, string>
             {
-                ["Content-Type"] = "text/html; charset=utf-8",
                 // A cached form would show ideas that have since been replaced.
                 ["Cache-Control"] = "no-store"
-            }
+            })
         };
 }

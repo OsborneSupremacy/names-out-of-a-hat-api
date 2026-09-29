@@ -286,12 +286,11 @@ internal class LeaveGiftExchangeService : IApiGatewayHandler
         {
             StatusCode = (int)HttpStatusCode.OK,
             Body = html,
-            Headers = new Dictionary<string, string>
+            Headers = EmailLinkedPage.Headers(new Dictionary<string, string>
             {
-                ["Content-Type"] = "text/html; charset=utf-8",
                 // A cached confirm page shown after the fact would offer to do something that has
                 // already been done, and a cached result page would report an outcome twice.
                 ["Cache-Control"] = "no-store"
-            }
+            })
         };
 }
