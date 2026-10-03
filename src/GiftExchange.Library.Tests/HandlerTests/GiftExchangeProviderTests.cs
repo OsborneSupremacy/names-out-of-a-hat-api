@@ -54,6 +54,77 @@ public class GiftExchangeProviderTests
     }
 
     [Fact]
+    public async Task CreateParticipantAsync_GivenAMixedCaseAddress_StoresItLowerCased()
+    {
+        // arrange: the session will carry this address lower-cased, so the row has to as well.
+        var hat = _hatDataModelFaker.Generate();
+        await _sut.CreateHatAsync(hat);
+
+        var typed = $"Mixed.Case.{Guid.NewGuid():N}@Example.COM";
+
+        // act
+        var participant = await _sut.CreateParticipantAsync(
+            _addParticipantRequestFaker.Generate() with { HatId = hat.HatId, OrganizerEmail = hat.OrganizerEmail, Email = typed },
+            []);
+
+        // assert
+        participant.Person.Email.Should().Be(typed.ToLowerInvariant());
+
+        await using var context = _contextFactory.CreateDbContext();
+        var stored = await context.Persons
+            .AsNoTracking()
+            .Select(person => person.Email)
+            .ToListAsync();
+        stored.Should().Contain(typed.ToLowerInvariant());
+        stored.Should().NotContain(typed);
+    }
+
+    [Fact]
+    public async Task CreateParticipantAsync_GivenTwoSpellingsOfOneAddress_ResolvesToOnePerson()
+    {
+        // arrange: one organizer types it one way, another the other.
+        var first = _hatDataModelFaker.Generate();
+        var second = _hatDataModelFaker.Generate();
+        await _sut.CreateHatAsync(first);
+        await _sut.CreateHatAsync(second);
+
+        var lower = $"same.person.{Guid.NewGuid():N}@example.com";
+
+        // act
+        await _sut.CreateParticipantAsync(
+            _addParticipantRequestFaker.Generate() with { HatId = first.HatId, OrganizerEmail = first.OrganizerEmail, Email = lower },
+            []);
+        await _sut.CreateParticipantAsync(
+            _addParticipantRequestFaker.Generate() with { HatId = second.HatId, OrganizerEmail = second.OrganizerEmail, Email = lower.ToUpperInvariant() },
+            []);
+
+        // assert
+        await using var context = _contextFactory.CreateDbContext();
+        var personIds = await context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.HatId == first.HatId || participant.HatId == second.HatId)
+            .Select(participant => participant.PersonId)
+            .Distinct()
+            .ToListAsync();
+        personIds.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task GetHatAsync_GivenTheOrganizerAddressInAnotherCase_FindsTheHat()
+    {
+        // arrange
+        var hat = _hatDataModelFaker.Generate();
+        await _sut.CreateHatAsync(hat);
+
+        // act: the converter runs over the value compared against the column, not only over writes.
+        var (exists, found) = await _sut.GetHatAsync(hat.OrganizerEmail.ToUpperInvariant(), hat.HatId);
+
+        // assert
+        exists.Should().BeTrue();
+        found.Id.Should().Be(hat.HatId);
+    }
+
+    [Fact]
     public async Task GetOrganizerHatsAsync_GivenExistingOrganizerEmail_ShouldReturnHats()
     {
         // arrange

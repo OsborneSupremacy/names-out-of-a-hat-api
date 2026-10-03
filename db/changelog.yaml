@@ -1872,3 +1872,36 @@ databaseChangeLog:
         # Nothing to put back, for the reason organizer_send--0002 gives.
         - sql:
             sql: SELECT 1
+
+  - changeSet:
+      id: person--0005
+      author: ben
+      comment: >
+        Lower-cases every address in person, so that a participant's row and the address they sign
+        in with are the same person.
+      preConditions:
+        # Two rows that differ only in case would collide under uq_person_email once lower-cased.
+        # Folding them together means moving every hat and participant from one to the other, which
+        # is a migration of its own; this stops the deploy rather than guessing at one.
+        - onFail: HALT
+        - onFailMessage: >
+            person holds two or more rows whose addresses differ only in case or surrounding
+            whitespace. They have to be merged into one person before person--0005 can lower-case
+            the table.
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM (
+                SELECT lower(btrim(email)) FROM person GROUP BY lower(btrim(email)) HAVING count(*) > 1
+              ) AS duplicates
+      changes:
+        - sqlFile:
+            path: tables/person--0005.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        # Nothing to put back. The spellings the addresses were typed in are not kept, and a
+        # lower-cased address is still an address, so the code before this change reads it without
+        # error.
+        - sql:
+            sql: SELECT 1

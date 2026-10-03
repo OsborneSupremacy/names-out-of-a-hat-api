@@ -1,4 +1,4 @@
-namespace GiftExchange.Library.Entities.Configurations;
+﻿namespace GiftExchange.Library.Entities.Configurations;
 
 internal class PersonEntityConfiguration : IEntityTypeConfiguration<PersonEntity>
 {
@@ -10,7 +10,20 @@ internal class PersonEntityConfiguration : IEntityTypeConfiguration<PersonEntity
         builder.Property(person => person.PersonId).HasColumnName("person_id").ValueGeneratedNever();
 
         builder.Property(person => person.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
-        builder.Property(person => person.Email).HasColumnName("email").HasMaxLength(254).IsRequired();
+
+        // Lower-cased on the way in, as person--0005 did to every row written before this. The
+        // session carries the address lower-cased, and an organizer types it however they like, so
+        // without this "Sam@Example.com" added to an exchange and "sam@example.com" signing in were
+        // two people under a case-sensitive unique index.
+        //
+        // A converter rather than a call at each write, because EF also runs it over every value
+        // compared against the column: a lookup by whatever spelling a request carried finds the
+        // row, and seeks uq_person_email to do it, without each query having to remember to.
+        builder.Property(person => person.Email)
+            .HasColumnName("email")
+            .HasMaxLength(254)
+            .IsRequired()
+            .HasConversion(email => email.ToNormalizedEmail(), email => email);
 
         // No navigation behind it, for the reason every other id in this schema has none: EF would
         // emit a foreign key wherever the provider takes one, and this codebase does not use them.
