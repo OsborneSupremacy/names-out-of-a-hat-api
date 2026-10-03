@@ -58,12 +58,12 @@ describe('Home', () => {
       exchangeDate: '0001-01-01'
     }
 
-    it('lists them under their own heading, with who organized each', async () => {
+    it('lists them under their own tab, with who organized each', async () => {
       getParticipatingHats.mockResolvedValue({ hats: [invitedTo], page: 1, pageSize: 5, totalCount: 1 })
       renderHome([])
 
-      expect(await screen.findByRole('heading', { name: "Gift Exchanges you're part of" })).toBeInTheDocument()
-      expect(screen.getByText('Office Secret Santa')).toBeInTheDocument()
+      expect(await screen.findByRole('tab', { name: "Gift Exchanges you're part of" })).toBeInTheDocument()
+      expect(screen.getByText('Office Secret Santa')).toBeVisible()
       expect(screen.getByText('Organized by Alex')).toBeInTheDocument()
       expect(screen.getByText('Invited')).toBeInTheDocument()
     })
@@ -80,7 +80,7 @@ describe('Home', () => {
       expect(await screen.findByText('Revealed')).toBeInTheDocument()
     })
 
-    it('leaves the heading out for somebody in none', async () => {
+    it('shows no tabs for somebody in none', async () => {
       renderHome([
         {
           hatId: '11111111-1111-1111-1111-111111111111',
@@ -92,7 +92,54 @@ describe('Home', () => {
 
       expect(await screen.findByText('Family Christmas')).toBeInTheDocument()
       await waitFor(() => expect(getParticipatingHats).toHaveBeenCalled())
-      expect(screen.queryByRole('heading', { name: "Gift Exchanges you're part of" })).not.toBeInTheDocument()
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Gift Exchanges you organized' })).toBeInTheDocument()
+    })
+
+    it('opens on what they organized, and switches tab on request', async () => {
+      getParticipatingHats.mockResolvedValue({ hats: [invitedTo], page: 1, pageSize: 5, totalCount: 1 })
+      renderHome([
+        {
+          hatId: '11111111-1111-1111-1111-111111111111',
+          hatName: 'Family Christmas',
+          status: 'IN_PROGRESS',
+          statusUpdatedAt: hoursAgo(1)
+        }
+      ])
+
+      const organized = await screen.findByRole('tab', { name: 'Gift Exchanges you organized' })
+      const joined = screen.getByRole('tab', { name: "Gift Exchanges you're part of" })
+
+      expect(organized).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByText('Family Christmas')).toBeVisible()
+      expect(screen.getByText('Office Secret Santa')).not.toBeVisible()
+      // The tab is the label, so the heading it replaced is gone.
+      expect(screen.queryByRole('heading', { name: 'Gift Exchanges you organized' })).not.toBeInTheDocument()
+
+      fireEvent.click(joined)
+
+      expect(joined).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByText('Office Secret Santa')).toBeVisible()
+      expect(screen.getByText('Family Christmas')).not.toBeVisible()
+    })
+
+    it('moves between tabs with the arrow keys', async () => {
+      getParticipatingHats.mockResolvedValue({ hats: [invitedTo], page: 1, pageSize: 5, totalCount: 1 })
+      renderHome([
+        {
+          hatId: '11111111-1111-1111-1111-111111111111',
+          hatName: 'Family Christmas',
+          status: 'IN_PROGRESS',
+          statusUpdatedAt: hoursAgo(1)
+        }
+      ])
+
+      const organized = await screen.findByRole('tab', { name: 'Gift Exchanges you organized' })
+      fireEvent.keyDown(organized, { key: 'ArrowRight' })
+
+      const joined = screen.getByRole('tab', { name: "Gift Exchanges you're part of" })
+      expect(joined).toHaveAttribute('aria-selected', 'true')
+      expect(joined).toHaveFocus()
     })
 
     // Somebody who has only ever been invited signed in to look at that, not to be asked to organize.
@@ -100,9 +147,13 @@ describe('Home', () => {
       getParticipatingHats.mockResolvedValue({ hats: [invitedTo], page: 1, pageSize: 5, totalCount: 1 })
       renderHome([])
 
-      expect(await screen.findByText('Office Secret Santa')).toBeInTheDocument()
-      expect(screen.getByText("You haven't organized any Gift Exchanges")).toBeInTheDocument()
+      expect(await screen.findByText('Office Secret Santa')).toBeVisible()
+      expect(screen.getByRole('tab', { name: "Gift Exchanges you're part of" })).toHaveAttribute('aria-selected', 'true')
       expect(screen.queryByRole('heading', { name: 'Create New Gift Exchange' })).not.toBeInTheDocument()
+
+      // The other tab still offers to start one.
+      fireEvent.click(screen.getByRole('tab', { name: 'Gift Exchanges you organized' }))
+      expect(screen.getByText("You haven't organized any Gift Exchanges")).toBeVisible()
     })
 
     it('still opens the create dialog for somebody with nothing at all', async () => {
@@ -257,6 +308,30 @@ describe('Home', () => {
       expect(screen.getByText('Page 2 of 2')).toBeInTheDocument()
       expect(screen.getByTestId('location')).toHaveTextContent('?page=2')
       expect(screen.getByRole('button', { name: /Next/ })).toBeDisabled()
+    })
+
+    it('keeps the chosen tab in the address', async () => {
+      getParticipatingHats.mockResolvedValue({
+        hats: [{
+          hatId: '33333333-3333-3333-3333-333333333333',
+          hatName: 'Office Secret Santa',
+          organizerName: 'Alex',
+          status: 'INVITATIONS_SENT',
+          exchangeDate: '0001-01-01'
+        }],
+        page: 1,
+        pageSize: 5,
+        totalCount: 1
+      })
+      serveSevenHats()
+      renderAt('/?tab=joined&page=2')
+
+      expect(await screen.findByRole('tab', { name: "Gift Exchanges you're part of" })).toHaveAttribute('aria-selected', 'true')
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Gift Exchanges you organized' }))
+
+      expect(screen.getByTestId('location')).toHaveTextContent('tab=organized')
+      expect(screen.getByTestId('location')).toHaveTextContent('page=2')
     })
 
     it('pages the two lists independently', async () => {

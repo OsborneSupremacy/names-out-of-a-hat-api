@@ -99,9 +99,47 @@
   margin-top: 0.25rem;
 }
 
-/* Set apart from the organizer's list above it, which may be only an empty state. */
-.participating-section {
-  margin-top: 2.5rem;
+/* The two lists on the home page: what somebody organized, and what they were invited to. */
+.home-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  /* Two long labels on a phone scroll sideways rather than wrapping into a second row of tabs. */
+  overflow-x: auto;
+}
+
+.home-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.home-tab:hover {
+  color: #374151;
+}
+
+.home-tab.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+}
+
+.home-tab:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+}
+
+/* Under tabs the heading is the tab's label, so only the button is left, and it sits right. */
+.section-header.section-header-actions-only {
+  justify-content: flex-end;
 }
 
 /* The pill and the age it carries, stacked and pushed to the right of the row. */
@@ -269,6 +307,23 @@
   .status-age,
   .gift-exchange-organizer {
     color: #9ca3af;
+  }
+
+  .home-tabs {
+    border-bottom-color: #374151;
+  }
+
+  .home-tab {
+    color: #9ca3af;
+  }
+
+  .home-tab:hover {
+    color: #e5e7eb;
+  }
+
+  .home-tab.active {
+    color: #818cf8;
+    border-bottom-color: #818cf8;
   }
 
   .status-pill.sent {

@@ -12,13 +12,15 @@ interface ParticipatingGiftExchangesProps {
   hidden: boolean
   /** How many there are across every page, once that is known. */
   onLoaded: (totalCount: number) => void
+  /** When the list could not be fetched, so the page still offers somewhere to say so. */
+  onFailed: () => void
 }
 
 /**
- * The exchanges somebody has been invited to, under the ones they organized.
+ * The exchanges somebody has been invited to: the content of the second tab on the home page.
  *
- * Renders nothing at all for somebody in none of them. Most people who sign in are organizers, and
- * a heading over an empty list would be one more thing on the page for them to read past.
+ * Fetched whether or not its tab is showing, because the count is what decides whether there is a
+ * tab at all. Renders nothing for somebody in none of them.
  */
 export function ParticipatingGiftExchanges({
   userEmail,
@@ -26,6 +28,7 @@ export function ParticipatingGiftExchanges({
   onPageChange,
   hidden,
   onLoaded,
+  onFailed,
 }: ParticipatingGiftExchangesProps) {
   const navigate = useNavigate()
   const [hats, setHats] = useState<ParticipatingHatMetadata[]>([])
@@ -63,7 +66,7 @@ export function ParticipatingGiftExchanges({
         console.error('Error loading the gift exchanges you are part of:', err)
         setError(err instanceof Error ? err.message : 'Failed to load the gift exchanges you are part of')
         setPageLoading(false)
-        onLoaded(0)
+        onFailed()
       }
     }
 
@@ -74,17 +77,12 @@ export function ParticipatingGiftExchanges({
     return () => {
       cancelled = true
     }
-  }, [userEmail, page, onPageChange, onLoaded])
+  }, [userEmail, page, onPageChange, onLoaded, onFailed])
 
   if (hidden) return null
 
   if (error) {
-    return (
-      <div className="gift-exchanges-section participating-section">
-        <h3>Gift Exchanges you're part of</h3>
-        <p className="error-message">{error}</p>
-      </div>
-    )
+    return <p className="error-message">{error}</p>
   }
 
   if (totalCount === 0) return null
@@ -92,10 +90,7 @@ export function ParticipatingGiftExchanges({
   const totalPages = pageSize > 0 ? Math.ceil(totalCount / pageSize) : 1
 
   return (
-    <div className="gift-exchanges-section participating-section">
-      <div className="section-header">
-        <h3>Gift Exchanges you're part of</h3>
-      </div>
+    <div className="gift-exchanges-section">
       <ul className={`gift-exchanges-list${pageLoading ? ' page-loading' : ''}`} aria-busy={pageLoading}>
         {hats.map((hat) => {
           const revealed = hat.status === 'CLOSED'

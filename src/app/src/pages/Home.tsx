@@ -1,5 +1,5 @@
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react'
 import { getHats, createHat, HatMetadata } from '../api'
 import { formatHatStatus } from '../hatStatus'
 import { formatRelativeTime, formatAbsoluteTime } from '../relativeTime'
@@ -14,6 +14,13 @@ function parsePage(value: string | null): number {
   const page = Number(value)
   return Number.isInteger(page) && page >= 1 ? page : 1
 }
+
+type HomeTab = 'organized' | 'joined'
+
+const HOME_TABS: { tab: HomeTab; label: string }[] = [
+  { tab: 'organized', label: 'Gift Exchanges you organized' },
+  { tab: 'joined', label: "Gift Exchanges you're part of" },
+]
 
 interface HomeProps {
   userEmail: string
@@ -42,6 +49,8 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
   const [organizerName, setOrganizerName] = useState<string | null>(null)
   // null until the list of exchanges they are part of has answered.
   const [participatingCount, setParticipatingCount] = useState<number | null>(null)
+  const [participatingFailed, setParticipatingFailed] = useState(false)
+  const handleParticipatingFailed = useCallback(() => setParticipatingFailed(true), [])
   // An organizer with nothing to look at is here to create something, so the dialog opens for them.
   // Guarded so that dismissing it leaves them on the empty state rather than reopening it.
   const openedCreateForEmptyList = useRef(false)
@@ -154,6 +163,42 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
 
   const totalPages = pageSize > 0 ? Math.ceil(totalCount / pageSize) : 1
 
+  // Tabs only for somebody who has something under the second one. Most people who sign in are
+  // organizers and nothing else, and a tab bar with one live tab would be one more thing for them
+  // to read past.
+  const showTabs = !hideParticipating && (participatingFailed || (participatingCount ?? 0) > 0)
+
+  // Kept in the URL, like the pages, so coming back from an exchange lands on the tab it was
+  // opened from. Without one, the tab with something in it: somebody who has only ever been
+  // invited is here to look at that.
+  const requestedTab = searchParams.get('tab')
+  const activeTab: HomeTab = !showTabs
+    ? 'organized'
+    : requestedTab === 'joined' || requestedTab === 'organized'
+      ? requestedTab
+      : !loading && !error && totalCount === 0
+        ? 'joined'
+        : 'organized'
+
+  // Always written out, rather than left off for the default, because which tab is the default
+  // depends on what is in them.
+  const selectTab = (tab: HomeTab) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('tab', tab)
+      return next
+    })
+  }
+
+  // Arrow keys move between tabs, as they do in any other tab list.
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const target: HomeTab = activeTab === 'organized' ? 'joined' : 'organized'
+    selectTab(target)
+    document.getElementById(`home-tab-${target}`)?.focus()
+  }
+
   const handleCreateNew = () => {
     setShowCreateModal(true)
   }
@@ -213,82 +258,120 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
             </div>
           )}
 
-          {loading ? (
-            <p>Loading your gift exchanges...</p>
-          ) : error ? (
-            <p className="error-message">{error}</p>
-          ) : (
-            <>
-              {totalCount > 0 ? (
-                <div className="gift-exchanges-section">
-                  <div className="section-header">
-                    <h3>Gift Exchanges you organized</h3>
-                    <button className="primary-button" onClick={handleCreateNew}>
-                      Create New Gift Exchange
-                    </button>
-                  </div>
-                  <ul className={`gift-exchanges-list${pageLoading ? ' page-loading' : ''}`} aria-busy={pageLoading}>
-                    {hats.map((hat) => {
-                      // Empty for a timestamp that cannot be phrased — the minimum date the API
-                      // uses for "not known" among them — and the line is left out entirely rather
-                      // than rendered blank, so the pill keeps its own height.
-                      const statusAge = formatRelativeTime(hat.statusUpdatedAt)
-
-                      return (
-                        <li
-                          key={hat.hatId}
-                          className="gift-exchange-item"
-                          onClick={() => handleHatClick(hat.hatId)}
-                        >
-                          <div className="gift-exchange-info">
-                            <strong>{hat.hatName}</strong>
-                          </div>
-                          <div className="gift-exchange-status">
-                            <span className={`status-pill ${hat.status.toLowerCase().replace(/_/g, '-')}`}>
-                              {formatHatStatus(hat.status)}
-                            </span>
-                            {statusAge && (
-                              // Under the pill rather than beside the name: it is how long the hat
-                              // has been at that status, not when the hat was last touched.
-                              <span className="status-age" title={formatAbsoluteTime(hat.statusUpdatedAt)}>
-                                {statusAge}
-                              </span>
-                            )}
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                  <Pagination
-                    page={page}
-                    totalPages={totalPages}
-                    busy={pageLoading}
-                    label="Gift exchange pages"
-                    onPageChange={goToPage}
-                  />
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <p>
-                    {participatingCount
-                      ? "You haven't organized any Gift Exchanges"
-                      : "You don't have any Gift Exchanges"}
-                  </p>
-                  <button className="primary-button" onClick={handleCreateNew}>
-                    Create a Gift Exchange
-                  </button>
-                </div>
-              )}
-            </>
+          {showTabs && (
+            <div className="home-tabs" role="tablist" aria-label="Gift exchanges">
+              {HOME_TABS.map(({ tab, label }) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  id={`home-tab-${tab}`}
+                  className={`home-tab${activeTab === tab ? ' active' : ''}`}
+                  aria-selected={activeTab === tab}
+                  aria-controls={`home-panel-${tab}`}
+                  tabIndex={activeTab === tab ? 0 : -1}
+                  onClick={() => selectTab(tab)}
+                  onKeyDown={handleTabKeyDown}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           )}
 
-          <ParticipatingGiftExchanges
-            userEmail={userEmail}
-            page={participatingPage}
-            onPageChange={goToParticipatingPage}
-            hidden={hideParticipating}
-            onLoaded={setParticipatingCount}
-          />
+          <div
+            id="home-panel-organized"
+            role={showTabs ? 'tabpanel' : undefined}
+            aria-labelledby={showTabs ? 'home-tab-organized' : undefined}
+            hidden={activeTab !== 'organized'}
+          >
+            {loading ? (
+              <p>Loading your gift exchanges...</p>
+            ) : error ? (
+              <p className="error-message">{error}</p>
+            ) : (
+              <>
+                {totalCount > 0 ? (
+                  <div className="gift-exchanges-section">
+                    <div className={`section-header${showTabs ? ' section-header-actions-only' : ''}`}>
+                      {/* The tab says it when there are tabs. */}
+                      {!showTabs && <h3>Gift Exchanges you organized</h3>}
+                      <button className="primary-button" onClick={handleCreateNew}>
+                        Create New Gift Exchange
+                      </button>
+                    </div>
+                    <ul className={`gift-exchanges-list${pageLoading ? ' page-loading' : ''}`} aria-busy={pageLoading}>
+                      {hats.map((hat) => {
+                        // Empty for a timestamp that cannot be phrased — the minimum date the API
+                        // uses for "not known" among them — and the line is left out entirely rather
+                        // than rendered blank, so the pill keeps its own height.
+                        const statusAge = formatRelativeTime(hat.statusUpdatedAt)
+
+                        return (
+                          <li
+                            key={hat.hatId}
+                            className="gift-exchange-item"
+                            onClick={() => handleHatClick(hat.hatId)}
+                          >
+                            <div className="gift-exchange-info">
+                              <strong>{hat.hatName}</strong>
+                            </div>
+                            <div className="gift-exchange-status">
+                              <span className={`status-pill ${hat.status.toLowerCase().replace(/_/g, '-')}`}>
+                                {formatHatStatus(hat.status)}
+                              </span>
+                              {statusAge && (
+                                // Under the pill rather than beside the name: it is how long the hat
+                                // has been at that status, not when the hat was last touched.
+                                <span className="status-age" title={formatAbsoluteTime(hat.statusUpdatedAt)}>
+                                  {statusAge}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    <Pagination
+                      page={page}
+                      totalPages={totalPages}
+                      busy={pageLoading}
+                      label="Gift exchange pages"
+                      onPageChange={goToPage}
+                    />
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <p>
+                      {participatingCount
+                        ? "You haven't organized any Gift Exchanges"
+                        : "You don't have any Gift Exchanges"}
+                    </p>
+                    <button className="primary-button" onClick={handleCreateNew}>
+                      Create a Gift Exchange
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Mounted whether or not its tab is showing: its count decides whether there are tabs. */}
+          <div
+            id="home-panel-joined"
+            role={showTabs ? 'tabpanel' : undefined}
+            aria-labelledby={showTabs ? 'home-tab-joined' : undefined}
+            hidden={activeTab !== 'joined'}
+          >
+            <ParticipatingGiftExchanges
+              userEmail={userEmail}
+              page={participatingPage}
+              onPageChange={goToParticipatingPage}
+              hidden={hideParticipating}
+              onLoaded={setParticipatingCount}
+              onFailed={handleParticipatingFailed}
+            />
+          </div>
         </div>
       </main>
 
