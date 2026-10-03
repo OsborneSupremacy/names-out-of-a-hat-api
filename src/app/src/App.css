@@ -92,6 +92,18 @@
   font-size: 1.125rem;
 }
 
+/* Who organized an exchange somebody was invited to, under its name. */
+.gift-exchange-organizer {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+/* Set apart from the organizer's list above it, which may be only an empty state. */
+.participating-section {
+  margin-top: 2.5rem;
+}
+
 /* The pill and the age it carries, stacked and pushed to the right of the row. */
 .gift-exchange-status {
   display: flex;
@@ -254,7 +266,8 @@
     background-color: #374151;
   }
 
-  .status-age {
+  .status-age,
+  .gift-exchange-organizer {
     color: #9ca3af;
   }
 

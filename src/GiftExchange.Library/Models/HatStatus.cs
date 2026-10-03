@@ -62,4 +62,15 @@ public static class HatStatuses
         HatStatus.InvitationsSent,
         HatStatus.CooledOff
     ];
+
+    /// <summary>
+    /// When the people in an exchange may see it for themselves. Not before the invitations go out:
+    /// until then the organizer is still shaping it, and somebody signing in should not find out
+    /// they are in an exchange before the organizer has told them.
+    /// </summary>
+    public static readonly ImmutableList<string> VisibleToParticipants = [
+        HatStatus.InvitationsSent,
+        HatStatus.CooledOff,
+        HatStatus.Closed
+    ];
 }

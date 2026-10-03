@@ -5,12 +5,17 @@ import { Home } from './Home'
 import { HatMetadata } from '../api'
 
 const getHats = vi.fn()
+const getParticipatingHats = vi.fn()
 
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
   getHats: (email: string, page?: number) => getHats(email, page),
+  getParticipatingHats: (email: string, page?: number) => getParticipatingHats(email, page),
   createHat: vi.fn()
 }))
+
+/** Somebody in nothing but what they organized, which is most people. */
+const notParticipating = { hats: [], page: 1, pageSize: 5, totalCount: 0 }
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
 
@@ -27,6 +32,84 @@ function renderHome(hats: HatMetadata[]) {
 describe('Home', () => {
   beforeEach(() => {
     getHats.mockReset()
+    getParticipatingHats.mockReset()
+    getParticipatingHats.mockResolvedValue(notParticipating)
+  })
+
+  it('calls the organizer\'s list the exchanges they organized', async () => {
+    renderHome([
+      {
+        hatId: '11111111-1111-1111-1111-111111111111',
+        hatName: 'Family Christmas',
+        status: 'IN_PROGRESS',
+        statusUpdatedAt: hoursAgo(1)
+      }
+    ])
+
+    expect(await screen.findByRole('heading', { name: 'Gift Exchanges you organized' })).toBeInTheDocument()
+  })
+
+  describe('exchanges they are part of', () => {
+    const invitedTo = {
+      hatId: '33333333-3333-3333-3333-333333333333',
+      hatName: 'Office Secret Santa',
+      organizerName: 'Alex',
+      status: 'INVITATIONS_SENT',
+      exchangeDate: '0001-01-01'
+    }
+
+    it('lists them under their own heading, with who organized each', async () => {
+      getParticipatingHats.mockResolvedValue({ hats: [invitedTo], page: 1, pageSize: 5, totalCount: 1 })
+      renderHome([])
+
+      expect(await screen.findByRole('heading', { name: "Gift Exchanges you're part of" })).toBeInTheDocument()
+      expect(screen.getByText('Office Secret Santa')).toBeInTheDocument()
+      expect(screen.getByText('Organized by Alex')).toBeInTheDocument()
+      expect(screen.getByText('Invited')).toBeInTheDocument()
+    })
+
+    it('says when the picks are out', async () => {
+      getParticipatingHats.mockResolvedValue({
+        hats: [{ ...invitedTo, status: 'CLOSED' }],
+        page: 1,
+        pageSize: 5,
+        totalCount: 1
+      })
+      renderHome([])
+
+      expect(await screen.findByText('Revealed')).toBeInTheDocument()
+    })
+
+    it('leaves the heading out for somebody in none', async () => {
+      renderHome([
+        {
+          hatId: '11111111-1111-1111-1111-111111111111',
+          hatName: 'Family Christmas',
+          status: 'IN_PROGRESS',
+          statusUpdatedAt: hoursAgo(1)
+        }
+      ])
+
+      expect(await screen.findByText('Family Christmas')).toBeInTheDocument()
+      await waitFor(() => expect(getParticipatingHats).toHaveBeenCalled())
+      expect(screen.queryByRole('heading', { name: "Gift Exchanges you're part of" })).not.toBeInTheDocument()
+    })
+
+    // Somebody who has only ever been invited signed in to look at that, not to be asked to organize.
+    it('does not open the create dialog for somebody who is only taking part', async () => {
+      getParticipatingHats.mockResolvedValue({ hats: [invitedTo], page: 1, pageSize: 5, totalCount: 1 })
+      renderHome([])
+
+      expect(await screen.findByText('Office Secret Santa')).toBeInTheDocument()
+      expect(screen.getByText("You haven't organized any Gift Exchanges")).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'Create New Gift Exchange' })).not.toBeInTheDocument()
+    })
+
+    it('still opens the create dialog for somebody with nothing at all', async () => {
+      renderHome([])
+
+      expect(await screen.findByRole('heading', { name: 'Create New Gift Exchange' })).toBeInTheDocument()
+    })
   })
 
   it('says how long each exchange has been at its status', async () => {
@@ -174,6 +257,20 @@ describe('Home', () => {
       expect(screen.getByText('Page 2 of 2')).toBeInTheDocument()
       expect(screen.getByTestId('location')).toHaveTextContent('?page=2')
       expect(screen.getByRole('button', { name: /Next/ })).toBeDisabled()
+    })
+
+    it('pages the two lists independently', async () => {
+      serveSevenHats()
+      getParticipatingHats.mockResolvedValue({ hats: [], page: 1, pageSize: 5, totalCount: 0 })
+      renderAt('/?joinedPage=3')
+
+      expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Next/ }))
+
+      expect(await screen.findByText('Exchange 6')).toBeInTheDocument()
+      expect(screen.getByTestId('location')).toHaveTextContent('joinedPage=3')
+      expect(screen.getByTestId('location')).toHaveTextContent('page=2')
+      expect(getParticipatingHats).toHaveBeenCalledWith('organizer@example.com', 3)
     })
 
     it('moves a page past the end to the last page, without offering to create one', async () => {

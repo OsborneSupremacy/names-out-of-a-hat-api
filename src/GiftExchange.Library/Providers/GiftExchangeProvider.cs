@@ -430,6 +430,133 @@ public class GiftExchangeProvider
     }
 
     /// <summary>
+    /// One page of the exchanges somebody has been invited to, most recently invited first.
+    /// </summary>
+    /// <remarks>
+    /// Only exchanges whose invitations have gone out. Before that the organizer is still deciding
+    /// who is in, and the list would tell somebody about an exchange nobody has told them about.
+    /// </remarks>
+    internal async Task<GetParticipatingHatsPageResponse> GetParticipatingHatsAsync(GetParticipatingHatsPageRequest request)
+    {
+        var nothing = new GetParticipatingHatsPageResponse { Hats = [], TotalCount = 0 };
+
+        // The sentinel person holds the empty address. See GetHatsAsync.
+        if (string.IsNullOrWhiteSpace(request.ParticipantEmail))
+            return nothing;
+
+        var visibleStatuses = HatStatuses.VisibleToParticipants.ToArray();
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var participations = context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.Person.Email == request.ParticipantEmail
+                                  && visibleStatuses.Contains(participant.Hat.Status));
+
+        var totalCount = await participations
+            .CountAsync()
+            .ConfigureAwait(false);
+
+        if (totalCount == 0)
+            return nothing;
+
+        // The hat id breaks ties, as it does for the organizer's list, so that paging is stable.
+        var hats = await participations
+            .OrderByDescending(participant => participant.Hat.InvitationsQueuedAt)
+            .ThenBy(participant => participant.HatId)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(participant => new ParticipatingHatMetaData
+            {
+                HatId = participant.HatId,
+                HatName = participant.Hat.Name,
+                OrganizerName = participant.Hat.Organizer.Name,
+                Status = participant.Hat.Status,
+                ExchangeDate = participant.Hat.ExchangeDate
+            })
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return new GetParticipatingHatsPageResponse
+        {
+            Hats = [.. hats],
+            TotalCount = totalCount
+        };
+    }
+
+    /// <summary>
+    /// One exchange as a participant in it sees it, with every pick resolved to a name.
+    /// </summary>
+    /// <remarks>
+    /// Found by the caller's place in it, and only once invitations are out, for the reasons
+    /// <see cref="GetParticipatingHatsAsync"/> gives. An exchange that exists but that the caller is
+    /// not in, or is not in yet, is the same answer as one that does not exist: whether it does is
+    /// not theirs to learn.
+    ///
+    /// Nothing the organizer alone sees is read -- not the eligibility rules, not the delivery
+    /// events -- so there is nothing here to forget to leave out.
+    /// </remarks>
+    internal async Task<GetParticipantViewDataResponse> GetParticipantViewAsync(GetParticipantViewRequest request)
+    {
+        var nothing = new GetParticipantViewDataResponse { Exists = false, View = ParticipantViews.Empty };
+
+        if (string.IsNullOrWhiteSpace(request.ParticipantEmail) || request.HatId == Guid.Empty)
+            return nothing;
+
+        var visibleStatuses = HatStatuses.VisibleToParticipants.ToArray();
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var hat = await context.Hats
+            .AsNoTracking()
+            .Include(entity => entity.Organizer)
+            .Include(entity => entity.Participants).ThenInclude(participant => participant.Person)
+            .Where(entity => entity.HatId == request.HatId
+                             && visibleStatuses.Contains(entity.Status)
+                             && entity.Participants.Any(participant => participant.Person.Email == request.ParticipantEmail))
+            .SingleOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        if (hat is null)
+            return nothing;
+
+        var persons = PersonsByParticipantId(hat.Participants);
+        var hatmates = persons.Values.ToList();
+
+        string DisplayName(Guid participantId) =>
+            persons.TryGetValue(participantId, out var person)
+                ? ParticipantNaming.DisplayName(person, hatmates)
+                : string.Empty;
+
+        var participants = hat.Participants
+            .Select(participant => new ParticipantViewEntry
+            {
+                Name = DisplayName(participant.ParticipantId),
+                Emoji = participant.Emoji,
+                IsYou = participant.Person.Email.ContentEquals(request.ParticipantEmail),
+                PickedRecipient = DisplayName(participant.PickedRecipientParticipantId)
+            })
+            .OrderBy(participant => participant.Name, StringComparer.OrdinalIgnoreCase)
+            .ToImmutableList();
+
+        return new GetParticipantViewDataResponse
+        {
+            Exists = true,
+            View = new ParticipantView
+            {
+                HatId = hat.HatId,
+                Name = hat.Name,
+                Status = hat.Status,
+                OrganizerName = hat.Organizer.Name,
+                AdditionalInformation = hat.AdditionalInformation,
+                PriceRange = hat.PriceRange,
+                ExchangeDate = hat.ExchangeDate,
+                Participants = participants
+            }
+        };
+    }
+
+    /// <summary>
     /// The most recent thing SES said about each of these participants, for the organizer's view.
     /// </summary>
     /// <remarks>
@@ -3250,7 +3377,8 @@ public class GiftExchangeProvider
         return new Participant
         {
             PickedRecipient = Persons.Empty,
-            Person = new Person { Name = request.Name, Email = request.Email },
+            // The spelling that was stored, which PersonEntityConfiguration lower-cases.
+            Person = new Person { Name = request.Name, Email = request.Email.ToNormalizedEmail() },
             Emoji = emoji,
             // Nothing has been sent to somebody who was added a moment ago.
             DeliveryStatus = Models.DeliveryStatus.Unknown,

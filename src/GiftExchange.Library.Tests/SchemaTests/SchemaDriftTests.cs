@@ -69,7 +69,13 @@ public class SchemaDriftTests
         { nameof(Person), "Participant.schema.json", "definitions/person" },
 
         { nameof(GetHatsResponse), "GetHatsResponse.schema.json", "" },
-        { nameof(HatMetaData), "GetHatsResponse.schema.json", "definitions/hatmetadata" }
+        { nameof(HatMetaData), "GetHatsResponse.schema.json", "definitions/hatmetadata" },
+
+        { nameof(GetParticipatingHatsResponse), "GetParticipatingHatsResponse.schema.json", "" },
+        { nameof(ParticipatingHatMetaData), "GetParticipatingHatsResponse.schema.json", "definitions/participatinghatmetadata" },
+
+        { nameof(ParticipantView), "ParticipantView.schema.json", "" },
+        { nameof(ParticipantViewEntry), "ParticipantView.schema.json", "definitions/participantviewentry" }
     };
 
     [Theory]

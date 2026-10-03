@@ -22,6 +22,53 @@ export interface GetHatsResponse {
   totalCount: number
 }
 
+/** One exchange the caller has been invited to, as the list of them shows it. */
+export interface ParticipatingHatMetadata {
+  hatId: string
+  hatName: string
+  organizerName: string
+  status: string
+  /** yyyy-MM-dd, or 0001-01-01 when the organizer has not given one. See exchangeDate.ts. */
+  exchangeDate: string
+}
+
+export interface GetParticipatingHatsResponse {
+  /** One page, most recently invited first. Empty when the page asked for is past the end. */
+  hats: ParticipatingHatMetadata[]
+  /** 1-based. */
+  page: number
+  /** Chosen by the server. */
+  pageSize: number
+  /** Every exchange the caller can see as a participant, across all pages. */
+  totalCount: number
+}
+
+/**
+ * A gift exchange as one of the people in it sees it. Read-only, and holding nobody's address
+ * except where two people share a name.
+ */
+export interface ParticipantView {
+  hatId: string
+  name: string
+  /** Everybody's pick is filled in once this is CLOSED; until then, only the caller's. */
+  status: string
+  organizerName: string
+  additionalInformation: string
+  priceRange: string
+  /** yyyy-MM-dd, or 0001-01-01 when the organizer has not given one. See exchangeDate.ts. */
+  exchangeDate: string
+  participants: ParticipantViewEntry[]
+}
+
+export interface ParticipantViewEntry {
+  /** Ready to show: already followed by the address where two people share a name. */
+  name: string
+  emoji: string
+  isYou: boolean
+  /** Empty when it is not the caller's to know. */
+  pickedRecipient: string
+}
+
 export interface CreateHatRequest {
   hatName: string
   organizerName: string
@@ -339,6 +386,36 @@ export async function getHats(email: string, page = 1): Promise<GetHatsResponse>
 
   if (!response.ok) {
     await handleApiError(response, 'Failed to fetch hats')
+  }
+
+  return response.json()
+}
+
+export async function getParticipatingHats(email: string, page = 1): Promise<GetParticipatingHatsResponse> {
+  const headers = await getAuthHeaders()
+
+  const response = await fetch(`${apiConfig.endpoint}/participating/${encodeURIComponent(email)}?page=${page}`, {
+    method: 'GET',
+    headers,
+  })
+
+  if (!response.ok) {
+    await handleApiError(response, 'Failed to fetch the gift exchanges you are part of')
+  }
+
+  return response.json()
+}
+
+export async function getParticipantView(email: string, hatId: string): Promise<ParticipantView> {
+  const headers = await getAuthHeaders()
+
+  const response = await fetch(`${apiConfig.endpoint}/participating/${encodeURIComponent(email)}/${hatId}`, {
+    method: 'GET',
+    headers,
+  })
+
+  if (!response.ok) {
+    await handleApiError(response, 'Failed to fetch gift exchange')
   }
 
   return response.json()

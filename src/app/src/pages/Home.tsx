@@ -6,6 +6,8 @@ import { formatRelativeTime, formatAbsoluteTime } from '../relativeTime'
 import { Header } from '../components/Header'
 import { Footer } from '../components/Footer'
 import { CreateHatModal } from '../components/CreateHatModal'
+import { Pagination } from '../components/Pagination'
+import { ParticipatingGiftExchanges } from '../components/ParticipatingGiftExchanges'
 
 /** The page in the URL, or the first page for anything that is not a positive whole number. */
 function parsePage(value: string | null): number {
@@ -24,6 +26,8 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
   // Kept in the URL so that coming back from an exchange, or refreshing, lands on the same page.
   const [searchParams, setSearchParams] = useSearchParams()
   const page = parsePage(searchParams.get('page'))
+  // Its own parameter, so that paging one list leaves the other where it was.
+  const participatingPage = parsePage(searchParams.get('joinedPage'))
   const [hats, setHats] = useState<HatMetadata[]>([])
   // Across every page, which is what decides between the list and the empty state: an empty page
   // is not the same as having no exchanges.
@@ -36,6 +40,8 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   // null until the hats response arrives, so the greeting never guesses.
   const [organizerName, setOrganizerName] = useState<string | null>(null)
+  // null until the list of exchanges they are part of has answered.
+  const [participatingCount, setParticipatingCount] = useState<number | null>(null)
   // An organizer with nothing to look at is here to create something, so the dialog opens for them.
   // Guarded so that dismissing it leaves them on the empty state rather than reopening it.
   const openedCreateForEmptyList = useRef(false)
@@ -46,6 +52,9 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
     () => (location.state as { dataDeletionRequested?: boolean } | null)?.dataDeletionRequested === true
   )
   const hideHats = useRef(dataDeletionRequested)
+  // The same, for the list of exchanges they are part of, which renders from state rather than
+  // reading the ref. Unlike the notice above it, dismissing nothing brings it back.
+  const [hideParticipating, setHideParticipating] = useState(dataDeletionRequested)
 
   // Read once, above, and then removed from the history entry, so a refresh a day later does not
   // announce a deletion that finished long ago.
@@ -55,12 +64,30 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
     }
   }, [location.pathname, location.state, navigate])
 
-  // Page 1 has no parameter at all, so the plain address is the first page.
-  const goToPage = useCallback(
-    (target: number, replace = false) => {
-      setSearchParams(target <= 1 ? {} : { page: String(target) }, { replace })
+  // Page 1 has no parameter at all, so the plain address is the first page of both lists.
+  const goToPageOf = useCallback(
+    (key: string, target: number, replace: boolean) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          if (target <= 1) next.delete(key)
+          else next.set(key, String(target))
+          return next
+        },
+        { replace }
+      )
     },
     [setSearchParams]
+  )
+
+  const goToPage = useCallback(
+    (target: number, replace = false) => goToPageOf('page', target, replace),
+    [goToPageOf]
+  )
+
+  const goToParticipatingPage = useCallback(
+    (target: number, replace = false) => goToPageOf('joinedPage', target, replace),
+    [goToPageOf]
   )
 
   useEffect(() => {
@@ -95,11 +122,6 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
         setPageSize(response.pageSize)
         setLoading(false)
         setPageLoading(false)
-
-        if (response.totalCount === 0 && !openedCreateForEmptyList.current) {
-          openedCreateForEmptyList.current = true
-          setShowCreateModal(true)
-        }
       } catch (err) {
         if (cancelled) return
         console.error('Error loading gift exchanges:', err)
@@ -117,6 +139,18 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
       cancelled = true
     }
   }, [userEmail, page, goToPage])
+
+  // Somebody with nothing to look at is here to create something, so the dialog opens for them --
+  // but only once both lists have answered, because somebody who has only ever been invited is
+  // here to look at that, not to be asked to organize.
+  useEffect(() => {
+    if (loading || error || hideHats.current || openedCreateForEmptyList.current) return
+
+    if (totalCount === 0 && participatingCount === 0) {
+      openedCreateForEmptyList.current = true
+      setShowCreateModal(true)
+    }
+  }, [loading, error, totalCount, participatingCount])
 
   const totalPages = pageSize > 0 ? Math.ceil(totalCount / pageSize) : 1
 
@@ -140,6 +174,7 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
     hideHats.current = true
     setHats([])
     setTotalCount(0)
+    setHideParticipating(true)
     setDataDeletionRequested(true)
   }
 
@@ -187,7 +222,7 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
               {totalCount > 0 ? (
                 <div className="gift-exchanges-section">
                   <div className="section-header">
-                    <h3>Your Gift Exchanges</h3>
+                    <h3>Gift Exchanges you organized</h3>
                     <button className="primary-button" onClick={handleCreateNew}>
                       Create New Gift Exchange
                     </button>
@@ -224,33 +259,21 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
                       )
                     })}
                   </ul>
-                  {totalPages > 1 && (
-                    <nav className="pagination" aria-label="Gift exchange pages">
-                      <button
-                        type="button"
-                        className="pagination-button"
-                        onClick={() => goToPage(page - 1)}
-                        disabled={page <= 1 || pageLoading}
-                      >
-                        ‹ Previous
-                      </button>
-                      <span className="pagination-status">
-                        Page {page} of {totalPages}
-                      </span>
-                      <button
-                        type="button"
-                        className="pagination-button"
-                        onClick={() => goToPage(page + 1)}
-                        disabled={page >= totalPages || pageLoading}
-                      >
-                        Next ›
-                      </button>
-                    </nav>
-                  )}
+                  <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    busy={pageLoading}
+                    label="Gift exchange pages"
+                    onPageChange={goToPage}
+                  />
                 </div>
               ) : (
                 <div className="empty-state">
-                  <p>You don't have any Gift Exchanges</p>
+                  <p>
+                    {participatingCount
+                      ? "You haven't organized any Gift Exchanges"
+                      : "You don't have any Gift Exchanges"}
+                  </p>
                   <button className="primary-button" onClick={handleCreateNew}>
                     Create a Gift Exchange
                   </button>
@@ -258,6 +281,14 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
               )}
             </>
           )}
+
+          <ParticipatingGiftExchanges
+            userEmail={userEmail}
+            page={participatingPage}
+            onPageChange={goToParticipatingPage}
+            hidden={hideParticipating}
+            onLoaded={setParticipatingCount}
+          />
         </div>
       </main>
 

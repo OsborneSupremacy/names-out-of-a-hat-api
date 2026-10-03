@@ -1,0 +1,113 @@
+/* The participant's read-only view. Built on the organizer's page styles, with only what differs. */
+
+.participant-view-organizer {
+  margin: 0 0 1.5rem;
+  color: #6b7280;
+}
+
+/* The one thing a participant comes here to be reminded of, so it sits above everything else. */
+.participant-view-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid #c7d2fe;
+  background-color: #eef2ff;
+}
+
+.participant-view-pick-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #4f46e5;
+}
+
+.participant-view-pick-name {
+  font-size: 1.5rem;
+  color: #1f2937;
+}
+
+.participant-view-hint {
+  margin: 0.375rem 0 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.participant-view-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.participant-view-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+}
+
+.participant-view-name {
+  font-weight: 600;
+  color: #1f2937;
+  /* A name followed by an address, where two people share one, is long and unbroken. */
+  overflow-wrap: anywhere;
+}
+
+.participant-view-you {
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.participant-view-recipient {
+  color: #374151;
+  overflow-wrap: anywhere;
+}
+
+.participant-view-arrow {
+  margin-right: 0.5rem;
+  color: #9ca3af;
+}
+
+@media (prefers-color-scheme: dark) {
+  .participant-view-organizer,
+  .participant-view-hint,
+  .participant-view-you {
+    color: #9ca3af;
+  }
+
+  .participant-view-pick {
+    background-color: #1e1b4b;
+    border-color: #3730a3;
+  }
+
+  .participant-view-pick-label {
+    color: #a5b4fc;
+  }
+
+  .participant-view-pick-name,
+  .participant-view-name {
+    color: #f9fafb;
+  }
+
+  .participant-view-row {
+    border-color: #374151;
+  }
+
+  .participant-view-recipient {
+    color: #d1d5db;
+  }
+
+  .participant-view-arrow {
+    color: #6b7280;
+  }
+}

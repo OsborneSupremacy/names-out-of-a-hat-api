@@ -131,6 +131,7 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<IValidator<RedeemMagicLinkRequest>, RedeemMagicLinkRequestValidator>()
                 .AddSingleton<IValidator<CloseHatRequest>, CloseHatRequestValidator>()
                 .AddSingleton<IValidator<GetHatsRequest>, GetHatsRequestValidator>()
+                .AddSingleton<IValidator<GetParticipatingHatsRequest>, GetParticipatingHatsRequestValidator>()
                 .AddSingleton<IValidator<CopyHatRequest>, CopyHatRequestValidator>()
                 .AddSingleton<IValidator<CreateHatRequest>, CreateHatRequestValidator>()
                 .AddSingleton<IValidator<DeleteMyDataRequest>, DeleteMyDataRequestValidator>()
@@ -192,6 +193,13 @@ internal static class ServiceProviderBuilder
                 .AddKeyedSingleton<IApiGatewayHandler, GetHatService>("get/hat/{email}/{id}")
                 .AddKeyedSingleton<IApiGatewayHandler, ExportHatService>("get/hat/{email}/export/{id}")
                 .AddKeyedSingleton<IApiGatewayHandler, GetHatsService>("get/hats/{email}")
+
+                // The participant's side of the same two reads. Separate resources rather than a
+                // mode of the organizer's, because the organizer's are found by who owns the hat
+                // and these by who is in it -- a flag choosing between the two would be one wrong
+                // value away from showing somebody an exchange that is not theirs.
+                .AddKeyedSingleton<IApiGatewayHandler, GetParticipantViewService>("get/participating/{email}/{id}")
+                .AddKeyedSingleton<IApiGatewayHandler, GetParticipatingHatsService>("get/participating/{email}")
 
                 .AddKeyedSingleton<IApiGatewayHandler, CreateHatService>("post/hat")
                 .AddKeyedSingleton<IApiGatewayHandler, EditHatService>("put/hat")

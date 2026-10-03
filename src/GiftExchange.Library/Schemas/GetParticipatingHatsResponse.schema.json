@@ -1,0 +1,73 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "hats": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/participatinghatmetadata"
+            },
+            "description": "The gift exchanges the caller has been invited to, most recently invited first."
+        },
+        "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The 1-based page these exchanges are from."
+        },
+        "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most exchanges a page holds. Chosen by the server."
+        },
+        "totalCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Every exchange the caller can see as a participant, across all pages."
+        }
+    },
+    "required": [
+        "hats",
+        "page",
+        "pageSize",
+        "totalCount"
+    ],
+    "definitions": {
+        "participatinghatmetadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "hatId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The unique identifier for the hat."
+                },
+                "hatName": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "description": "The display name of the hat."
+                },
+                "organizerName": {
+                    "type": "string",
+                    "description": "Who organized the gift exchange."
+                },
+                "status": {
+                    "type": "string",
+                    "description": "The current status of the gift exchange."
+                },
+                "exchangeDate": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "description": "The approximate day of the exchange, as yyyy-MM-dd, or 0001-01-01 when the organizer has not given one"
+                }
+            },
+            "required": [
+                "hatId",
+                "hatName",
+                "organizerName",
+                "status",
+                "exchangeDate"
+            ]
+        }
+    }
+}
