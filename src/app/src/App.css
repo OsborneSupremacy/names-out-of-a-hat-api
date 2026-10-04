@@ -104,7 +104,10 @@
   display: flex;
   gap: 0.25rem;
   margin-bottom: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  /* The divider is a shadow rather than a border, so the active tab's underline can sit on top of
+     it without a negative margin -- which overflowed the scroll container below and gave it a
+     scrollbar of its own. */
+  box-shadow: inset 0 -1px 0 #e5e7eb;
   /* Two long labels on a phone scroll sideways rather than wrapping into a second row of tabs. */
   overflow-x: auto;
 }
@@ -113,7 +116,8 @@
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  /* The global button rule rounds every button, which bent the underline into the ends of a box. */
+  border-radius: 0;
   padding: 0.75rem 1rem;
   font-size: 1rem;
   font-weight: 600;
@@ -125,6 +129,8 @@
 
 .home-tab:hover {
   color: #374151;
+  /* Stated, because the global button:hover would otherwise paint it the accent colour. */
+  border-bottom-color: #d1d5db;
 }
 
 .home-tab.active {
@@ -132,9 +138,16 @@
   border-bottom-color: #667eea;
 }
 
+/* The global button:focus draws the browser's ring on every click; the underline already says
+   which tab is selected, so the ring is kept for keyboard focus only. */
+.home-tab:focus {
+  outline: none;
+}
+
 .home-tab:focus-visible {
   outline: 2px solid #667eea;
   outline-offset: -2px;
+  border-radius: 0.25rem 0.25rem 0 0;
 }
 
 /* Under tabs the heading is the tab's label, so only the button is left, and it sits right. */
@@ -310,7 +323,7 @@
   }
 
   .home-tabs {
-    border-bottom-color: #374151;
+    box-shadow: inset 0 -1px 0 #374151;
   }
 
   .home-tab {
@@ -319,11 +332,16 @@
 
   .home-tab:hover {
     color: #e5e7eb;
+    border-bottom-color: #4b5563;
   }
 
   .home-tab.active {
-    color: #818cf8;
+    color: #a5b4fc;
     border-bottom-color: #818cf8;
+  }
+
+  .home-tab:focus-visible {
+    outline-color: #818cf8;
   }
 
   .status-pill.sent {
