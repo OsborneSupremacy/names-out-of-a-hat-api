@@ -11,6 +11,9 @@ namespace GiftExchange.Library.Contexts;
 [JsonSerializable(typeof(APIGatewayProxyRequest))]
 [JsonSerializable(typeof(APIGatewayProxyResponse))]
 [JsonSerializable(typeof(AddParticipantRequest))]
+[JsonSerializable(typeof(AnswerGiftIdeaAskRequest))]
+[JsonSerializable(typeof(AskForGiftIdeasRequest))]
+[JsonSerializable(typeof(AskForGiftIdeasResponse))]
 [JsonSerializable(typeof(AssignRecipientsRequest))]
 [JsonSerializable(typeof(CloseHatRequest))]
 [JsonSerializable(typeof(CopyHatRequest))]
@@ -41,6 +44,8 @@ namespace GiftExchange.Library.Contexts;
 [JsonSerializable(typeof(HatCooledOffScheduleRequest))]
 [JsonSerializable(typeof(HatPreconditionRequest))]
 [JsonSerializable(typeof(HatPreconditionResponse))]
+[JsonSerializable(typeof(LeaveGiftExchangeRequest))]
+[JsonSerializable(typeof(OfferGiftIdeasRequest))]
 [JsonSerializable(typeof(ParticipantView))]
 [JsonSerializable(typeof(PreviewInvitationsRequest))]
 [JsonSerializable(typeof(PreviewInvitationsResponse))]
@@ -52,6 +57,7 @@ namespace GiftExchange.Library.Contexts;
 [JsonSerializable(typeof(RemoveParticipantRequest))]
 [JsonSerializable(typeof(ResetHatRequest))]
 [JsonSerializable(typeof(SendInvitationsRequest))]
+[JsonSerializable(typeof(ShareGiftIdeasRequest))]
 // What SNS delivers to the delivery events queue. Deserialized by DeliveryEventsService rather
 // than by the Lambda serializer -- the event this function is invoked with is an SQSEvent, and
 // this is the shape of one record's body inside it.

@@ -1,0 +1,36 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "description": "Gift ideas about somebody other than the caller's pick, offered without being asked.",
+    "properties": {
+        "participantEmail": {
+            "type": "string",
+            "format": "email",
+            "minLength": 5,
+            "maxLength": 254,
+            "description": "The caller's email address. Overwritten with the signed-in address, so naming somebody else does nothing."
+        },
+        "hatId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The gift exchange, which the caller must be taking part in."
+        },
+        "subjectParticipantId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Who the ideas are about. Anybody in the exchange but the caller and their pick."
+        },
+        "ideas": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "What the caller wrote. Judged by the same content rules as the share page in an email; a refusal is a 422 saying why."
+        }
+    },
+    "required": [
+        "participantEmail",
+        "hatId",
+        "subjectParticipantId",
+        "ideas"
+    ],
+    "additionalProperties": false
+}

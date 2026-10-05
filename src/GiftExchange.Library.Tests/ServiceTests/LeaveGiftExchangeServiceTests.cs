@@ -58,10 +58,12 @@ public class LeaveGiftExchangeServiceTests
 
         _sut = new LeaveGiftExchangeService(
             _provider,
-            new LeavePageComposer(),
-            new LeaveEmailCompositionService(),
-            _queue,
-            Substitute.For<ILogger<LeaveGiftExchangeService>>());
+            new GiftExchangeLeaving(
+                _provider,
+                new LeaveEmailCompositionService(),
+                _queue,
+                Substitute.For<ILogger<GiftExchangeLeaving>>()),
+            new LeavePageComposer());
     }
 
     [Fact]

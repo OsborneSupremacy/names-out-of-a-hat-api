@@ -551,7 +551,14 @@ public class GiftExchangeProvider
                 AdditionalInformation = hat.AdditionalInformation,
                 PriceRange = hat.PriceRange,
                 ExchangeDate = hat.ExchangeDate,
-                Participants = participants
+                Participants = participants,
+                // No leave token is ever issued to the organizer, and the signed-in page holds to
+                // the same line. See FindLeaveRouteForParticipantAsync.
+                CanLeave = hat.Participants.Any(participant =>
+                    participant.Person.Email.ContentEquals(request.ParticipantEmail)
+                    && participant.PersonId != hat.OrganizerPersonId),
+                // Read by the service, which decides what the caller may do with them.
+                GiftIdeas = ParticipantGiftIdeasDefaults.Empty
             }
         };
     }
@@ -1143,24 +1150,66 @@ public class GiftExchangeProvider
         // One join stated here, because the hop from a token to a participant crosses an id with no
         // navigation behind it; the hops to a person, a hat and the hat's organizer are navigations
         // and EF emits those joins itself.
-        var match = await context.ParticipantLeaveTokens
+        var leavers = context.ParticipantLeaveTokens
             .AsNoTracking()
             .Where(token => token.TokenHash == tokenHash)
             .Join(
                 context.Participants,
                 token => token.ParticipantId,
                 participant => participant.ParticipantId,
-                (_, participant) => new
-                {
-                    participant.ParticipantId,
-                    participant.Hat.HatId,
-                    HatName = participant.Hat.Name,
-                    participant.Hat.Status,
-                    LeaverName = participant.Person.Name,
-                    LeaverEmail = participant.Person.Email,
-                    OrganizerName = participant.Hat.Organizer.Name,
-                    OrganizerEmail = participant.Hat.Organizer.Email
-                })
+                (_, participant) => participant);
+
+        return await ReadLeaveRouteAsync(leavers).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resolves a signed-in participant to the leave route for one exchange they are in: the
+    /// counterpart of <see cref="FindLeaveRouteAsync"/> for the participant's own page.
+    /// </summary>
+    /// <remarks>
+    /// The organizer is excluded here in so many words. On the email path the exclusion is that no
+    /// leave token is ever issued for them; a session has no such absence to lean on, so the query
+    /// says it instead.
+    ///
+    /// Only once invitations are out, for the reason <see cref="GetParticipantViewAsync"/> gives:
+    /// somebody should not be able to act on an exchange nobody has told them they are in.
+    /// </remarks>
+    internal async Task<(bool found, LeaveRoute route)> FindLeaveRouteForParticipantAsync(FindParticipantRouteRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.ParticipantEmail) || request.HatId == Guid.Empty)
+            return (false, LeaveRoutes.Empty);
+
+        var visibleStatuses = HatStatuses.VisibleToParticipants.ToArray();
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var leavers = context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.HatId == request.HatId
+                                  && participant.Person.Email == request.ParticipantEmail
+                                  && participant.PersonId != participant.Hat.OrganizerPersonId
+                                  && visibleStatuses.Contains(participant.Hat.Status));
+
+        return await ReadLeaveRouteAsync(leavers).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The leave route for whichever single participant this query finds, however it found them.
+    /// </summary>
+    private static async Task<(bool found, LeaveRoute route)> ReadLeaveRouteAsync(IQueryable<ParticipantEntity> leavers)
+    {
+        var match = await leavers
+            .Select(participant => new
+            {
+                participant.ParticipantId,
+                participant.Hat.HatId,
+                HatName = participant.Hat.Name,
+                participant.Hat.Status,
+                LeaverName = participant.Person.Name,
+                LeaverEmail = participant.Person.Email,
+                OrganizerName = participant.Hat.Organizer.Name,
+                OrganizerEmail = participant.Hat.Organizer.Email
+            })
             .SingleOrDefaultAsync()
             .ConfigureAwait(false);
 
@@ -2439,22 +2488,65 @@ public class GiftExchangeProvider
 
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
-        // Two joins, not five. The hops to a person and to a hat are navigations, so EF emits those
-        // joins itself; only the two that cross an id with no navigation behind it are stated here,
-        // and both are deliberate — a token names a participant and a pick names a participant,
-        // neither through a foreign key.
-        //
-        // Both are inner joins, which is what the sentinel participant and person are for: a
-        // participant who has not drawn anybody carries the all-zero id, and that id names a real
-        // row whose name is the empty string.
-        var match = await context.GiftIdeaTokens
+        // One join stated here, because a token names a participant through an id with no
+        // navigation behind it. The rest of the route is read the same way whichever door the
+        // participant came in by.
+        var senders = context.GiftIdeaTokens
             .AsNoTracking()
             .Where(token => token.TokenHash == tokenHash)
             .Join(
                 context.Participants,
                 token => token.ParticipantId,
                 participant => participant.ParticipantId,
-                (_, participant) => participant)
+                (_, participant) => participant);
+
+        return await ReadGiftIdeaRouteAsync(context, senders).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resolves a signed-in participant to their own gift ideas route in one exchange: the
+    /// counterpart of <see cref="FindGiftIdeaRouteAsync"/> for the participant's own page.
+    /// </summary>
+    /// <remarks>
+    /// Only once invitations are out, for the reason <see cref="GetParticipantViewAsync"/> gives.
+    /// Whether the exchange is still taking gift ideas is the caller's question, as it is on the
+    /// email path; this only says whether the caller is in it and may see it.
+    /// </remarks>
+    internal async Task<(bool found, GiftIdeaRoute route)> FindGiftIdeaRouteForParticipantAsync(FindParticipantRouteRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.ParticipantEmail) || request.HatId == Guid.Empty)
+            return (false, GiftIdeaRoutes.Empty);
+
+        var visibleStatuses = HatStatuses.VisibleToParticipants.ToArray();
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var senders = context.Participants
+            .AsNoTracking()
+            .Where(participant => participant.HatId == request.HatId
+                                  && participant.Person.Email == request.ParticipantEmail
+                                  && visibleStatuses.Contains(participant.Hat.Status));
+
+        return await ReadGiftIdeaRouteAsync(context, senders).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The gift ideas route for whichever single participant this query finds, however it found
+    /// them: their pick, whoever drew them, and everybody else in the exchange.
+    /// </summary>
+    private static async Task<(bool found, GiftIdeaRoute route)> ReadGiftIdeaRouteAsync(
+        GiftExchangeDbContext context,
+        IQueryable<ParticipantEntity> senders
+    )
+    {
+        // One join here. The hops to a person and to a hat are navigations, so EF emits those joins
+        // itself; only the one that crosses an id with no navigation behind it is stated, and it is
+        // deliberate — a pick names a participant, not through a foreign key.
+        //
+        // It is an inner join, which is what the sentinel participant and person are for: a
+        // participant who has not drawn anybody carries the all-zero id, and that id names a real
+        // row whose name is the empty string.
+        var match = await senders
             .Join(
                 context.Participants,
                 participant => participant.PickedRecipientParticipantId,
@@ -2543,6 +2635,57 @@ public class GiftExchangeProvider
 
         await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
 
+        var asks = context.GiftIdeaAsks
+            .AsNoTracking()
+            .Where(ask => ask.TokenHash == tokenHash);
+
+        return await ReadGiftIdeaContributionRouteAsync(context, asks).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resolves an ask to the route for answering it, for the signed-in helper it was put to: the
+    /// counterpart of <see cref="FindGiftIdeaContributionRouteAsync"/> for the participant's own
+    /// page.
+    /// </summary>
+    /// <remarks>
+    /// The ask id is the client's and is not a credential. It resolves only when the caller is the
+    /// helper, in the exchange named, and that exchange is one they may see.
+    ///
+    /// A revoked ask still resolves here. Revoking closes the link that went to an address the
+    /// organizer later corrected, because whoever reads that inbox holds the link; the participant
+    /// signed in at the corrected address is the person the ask was meant for all along.
+    /// </remarks>
+    internal async Task<(bool found, GiftIdeaRoute route)> FindGiftIdeaContributionRouteForHelperAsync(
+        FindHelperAskRouteRequest request
+    )
+    {
+        if (string.IsNullOrWhiteSpace(request.HelperEmail) || request.HatId == Guid.Empty || request.AskId == Guid.Empty)
+            return (false, GiftIdeaRoutes.Empty);
+
+        var visibleStatuses = HatStatuses.VisibleToParticipants.ToArray();
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var asks = context.GiftIdeaAsks
+            .AsNoTracking()
+            .Where(ask => ask.GiftIdeaAskId == request.AskId
+                          && context.Participants.Any(helper =>
+                              helper.ParticipantId == ask.HelperParticipantId
+                              && helper.HatId == request.HatId
+                              && helper.Person.Email == request.HelperEmail
+                              && visibleStatuses.Contains(helper.Hat.Status)));
+
+        return await ReadGiftIdeaContributionRouteAsync(context, asks).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The route for answering whichever single ask this query finds, however it found it.
+    /// </summary>
+    private static async Task<(bool found, GiftIdeaRoute route)> ReadGiftIdeaContributionRouteAsync(
+        GiftExchangeDbContext context,
+        IQueryable<GiftIdeaAskEntity> asks
+    )
+    {
         // Four joins for the four participants an ask involves — the helper, the helper's own pick,
         // the subject and the asker. Each one's name and address arrives through the Person
         // navigation rather than a join of its own, and so does the hat, which is why this is four
@@ -2552,9 +2695,7 @@ public class GiftExchangeProvider
         // ask cannot outlive — removing either participant deletes the ask — and the helper's own
         // pick resolves through the sentinel participant when they have not drawn anybody, exactly
         // as it does above.
-        var match = await context.GiftIdeaAsks
-            .AsNoTracking()
-            .Where(ask => ask.TokenHash == tokenHash)
+        var match = await asks
             .Join(
                 context.Participants,
                 ask => ask.HelperParticipantId,
@@ -3200,6 +3341,226 @@ public class GiftExchangeProvider
             .Select(contribution => contribution.Ideas)
             .FirstOrDefaultAsync()
             .ConfigureAwait(false) ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Everything about gift ideas a participant may see in their exchange, for their own page.
+    /// </summary>
+    /// <remarks>
+    /// What may be shown is what has already reached them, or would have: see
+    /// <see cref="ParticipantGiftIdeas"/>. Two rules are applied here rather than left to the caller,
+    /// because getting either wrong tells somebody something this application promised to keep
+    /// quiet.
+    ///
+    /// The pick's own words appear only once they would have been forwarded to whoever drew them —
+    /// written outright, or written to be held and then asked for. Only the newest submission is
+    /// considered, which is the one <see cref="GetLatestGiftIdeaAsync"/> says decides: a pick who
+    /// changed their mind and held a new version back has not asked for the old one to stay on show.
+    ///
+    /// An ask put to this participant carries the subject and never the asker, as the email does.
+    ///
+    /// Everything about the pick is read against the pick as it stands. An organizer who redraws
+    /// moves what was said about somebody to whoever now holds their name, which is who it was
+    /// written for; and answers to asks about a former pick fall away with the pick.
+    ///
+    /// The flags and the lists of people to choose from are not read here. Whether the exchange is
+    /// still taking ideas is the service's question, and the candidates have their own lookups.
+    /// </remarks>
+    internal async Task<ParticipantGiftIdeas> GetParticipantGiftIdeasAsync(GiftIdeaRoute route)
+    {
+        var you = route.ParticipantId;
+        var pick = route.SenderPickedRecipientParticipantId;
+
+        var yours = await GetLatestGiftIdeaAsync(you).ConfigureAwait(false);
+
+        var (fromYourPick, fromYourPickSharedAt) = await ReadPickOwnIdeasAsync(you, pick).ConfigureAwait(false);
+
+        await using var context = await _contextFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+        var everybody = await LoadHatParticipantsAsync(context, route.HatId).ConfigureAwait(false);
+        var hatmates = everybody.Select(participant => participant.Person).ToImmutableList();
+        var names = everybody.ToDictionary(
+            participant => participant.ParticipantId,
+            participant => ParticipantNaming.DisplayName(participant.Person, hatmates));
+
+        // Every ask either side of this participant: the ones they made about their pick, and the
+        // ones put to them. Read together because their answers are read together below.
+        var asks = await context.GiftIdeaAsks
+            .AsNoTracking()
+            .Where(ask => (ask.AskerParticipantId == you && ask.SubjectParticipantId == pick && pick != Guid.Empty)
+                          || ask.HelperParticipantId == you)
+            .Select(ask => new
+            {
+                ask.GiftIdeaAskId,
+                ask.AskerParticipantId,
+                ask.HelperParticipantId,
+                ask.SubjectParticipantId,
+                ask.IssuedAt
+            })
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        var askIds = asks.Select(ask => ask.GiftIdeaAskId).ToList();
+
+        var answers = askIds.Count == 0
+            ? []
+            : await context.ContributedGiftIdeas
+                .AsNoTracking()
+                .Where(contribution => askIds.Contains(contribution.GiftIdeaAskId))
+                .Select(contribution => new { contribution.GiftIdeaAskId, contribution.Ideas, contribution.CreatedAt })
+                .ToListAsync()
+                .ConfigureAwait(false);
+
+        // Offers either side of this participant: about their pick by anybody else, and by them.
+        var offers = await context.OfferedGiftIdeas
+            .AsNoTracking()
+            .Where(offer => (offer.SubjectParticipantId == pick && pick != Guid.Empty && offer.AuthorParticipantId != you)
+                            || offer.AuthorParticipantId == you)
+            .Select(offer => new { offer.AuthorParticipantId, offer.SubjectParticipantId, offer.Ideas, offer.CreatedAt })
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        // Asked of and answered by one helper, across however many weekly asks it took.
+        var askedAboutPick = asks
+            .Where(ask => ask.AskerParticipantId == you)
+            .GroupBy(ask => ask.HelperParticipantId)
+            .Where(group => names.ContainsKey(group.Key))
+            .Select(group =>
+            {
+                var groupAskIds = group.Select(ask => ask.GiftIdeaAskId).ToHashSet();
+                var latestAnswer = answers
+                    .Where(answer => groupAskIds.Contains(answer.GiftIdeaAskId))
+                    .MaxBy(answer => answer.CreatedAt);
+
+                return new
+                {
+                    Name = names[group.Key],
+                    AskedAt = group.Max(ask => ask.IssuedAt),
+                    Answer = latestAnswer
+                };
+            })
+            .ToList();
+
+        var answersAboutPick = askedAboutPick
+            .Where(helper => helper.Answer is not null)
+            .Select(helper => new SuggestedGiftIdeas
+            {
+                From = helper.Name,
+                Ideas = helper.Answer!.Ideas,
+                SharedAt = helper.Answer.CreatedAt,
+                WasAskedFor = true
+            });
+
+        var offersAboutPick = offers
+            .Where(offer => offer.AuthorParticipantId != you && names.ContainsKey(offer.AuthorParticipantId))
+            .GroupBy(offer => offer.AuthorParticipantId)
+            .Select(group => group.MaxBy(offer => offer.CreatedAt)!)
+            .Select(offer => new SuggestedGiftIdeas
+            {
+                From = names[offer.AuthorParticipantId],
+                Ideas = offer.Ideas,
+                SharedAt = offer.CreatedAt,
+                WasAskedFor = false
+            });
+
+        // One per person asked about, answered through the newest ask. The asker is read only to be
+        // left out.
+        var asksForYou = asks
+            .Where(ask => ask.HelperParticipantId == you && names.ContainsKey(ask.SubjectParticipantId))
+            .GroupBy(ask => ask.SubjectParticipantId)
+            .Select(group =>
+            {
+                var newest = group.MaxBy(ask => ask.IssuedAt)!;
+                var groupAskIds = group.Select(ask => ask.GiftIdeaAskId).ToHashSet();
+                var latestAnswer = answers
+                    .Where(answer => groupAskIds.Contains(answer.GiftIdeaAskId))
+                    .MaxBy(answer => answer.CreatedAt);
+
+                return new GiftIdeaAskForYou
+                {
+                    AskId = newest.GiftIdeaAskId,
+                    SubjectName = names[group.Key],
+                    AskedAt = newest.IssuedAt,
+                    YourAnswer = latestAnswer?.Ideas ?? string.Empty,
+                    AnsweredAt = latestAnswer?.CreatedAt ?? DateTimeOffset.MinValue
+                };
+            })
+            .OrderByDescending(ask => ask.AskedAt)
+            .ToImmutableList();
+
+        var yourOffers = offers
+            .Where(offer => offer.AuthorParticipantId == you && names.ContainsKey(offer.SubjectParticipantId))
+            .GroupBy(offer => offer.SubjectParticipantId)
+            .Select(group => group.MaxBy(offer => offer.CreatedAt)!)
+            .Select(offer => new YourOfferedGiftIdeas
+            {
+                SubjectName = names[offer.SubjectParticipantId],
+                Ideas = offer.Ideas,
+                SharedAt = offer.CreatedAt
+            })
+            .OrderByDescending(offer => offer.SharedAt)
+            .ToImmutableList();
+
+        return ParticipantGiftIdeasDefaults.Empty with
+        {
+            YourIdeas = yours.Ideas,
+            YourIdeasSharedAt = yours.CreatedAt,
+            HoldUntilAsked = yours.HoldUntilAsked,
+            HasSharedOutrightBefore = yours.HasSharedOutrightBefore,
+            FromYourPick = fromYourPick,
+            FromYourPickSharedAt = fromYourPickSharedAt,
+            AboutYourPick =
+            [
+                .. answersAboutPick
+                    .Concat(offersAboutPick)
+                    .OrderByDescending(suggestion => suggestion.SharedAt)
+            ],
+            AskedAboutYourPick =
+            [
+                .. askedAboutPick
+                    .Select(helper => new AskedHelper
+                    {
+                        Name = helper.Name,
+                        AskedAt = helper.AskedAt,
+                        HasAnswered = helper.Answer is not null
+                    })
+                    .OrderByDescending(helper => helper.AskedAt)
+            ],
+            AsksForYou = asksForYou,
+            YourOffers = yourOffers
+        };
+    }
+
+    /// <summary>
+    /// What a participant's pick wrote about themselves, if it has reached the participant: written
+    /// outright, or held and since asked for.
+    /// </summary>
+    /// <remarks>
+    /// Asked for at all, rather than asked for since it was written. A held submission written after
+    /// the ask is forwarded the moment it is written (see <see cref="GiftIdeaSharing"/>), so once
+    /// somebody has asked, everything their pick holds has reached them or is on its way.
+    /// </remarks>
+    private async Task<(string ideas, DateTimeOffset sharedAt)> ReadPickOwnIdeasAsync(Guid you, Guid pick)
+    {
+        if (pick == Guid.Empty)
+            return (string.Empty, DateTimeOffset.MinValue);
+
+        var latest = await GetLatestGiftIdeaAsync(pick).ConfigureAwait(false);
+
+        if (string.IsNullOrEmpty(latest.Ideas))
+            return (string.Empty, DateTimeOffset.MinValue);
+
+        var reachedYou = !latest.HoldUntilAsked
+                         || await HasAskedForGiftIdeasAsync(new HasAskedForGiftIdeasRequest
+                             {
+                                 AskerParticipantId = you,
+                                 SubjectParticipantId = pick
+                             })
+                             .ConfigureAwait(false);
+
+        return reachedYou
+            ? (latest.Ideas, latest.CreatedAt)
+            : (string.Empty, DateTimeOffset.MinValue);
     }
 
     public async Task UpdateHatStatusAsync(string organizerEmail, Guid hatId, string newStatus)

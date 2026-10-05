@@ -2,7 +2,7 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "additionalProperties": false,
-    "description": "A gift exchange as one of the people in it sees it.",
+    "description": "A gift exchange as one of the people in it sees it, with what they may see and do about gift ideas.",
     "properties": {
         "hatId": {
             "type": "string",
@@ -41,6 +41,13 @@
                 "$ref": "#/definitions/participantviewentry"
             },
             "description": "Everybody in the exchange, the caller included."
+        },
+        "canLeave": {
+            "type": "boolean",
+            "description": "Whether the caller may take themselves out of the exchange. False for the organizer."
+        },
+        "giftIdeas": {
+            "$ref": "#/definitions/participantgiftideas"
         }
     },
     "required": [
@@ -51,7 +58,9 @@
         "additionalInformation",
         "priceRange",
         "exchangeDate",
-        "participants"
+        "participants",
+        "canLeave",
+        "giftIdeas"
     ],
     "definitions": {
         "participantviewentry": {
@@ -80,6 +89,260 @@
                 "emoji",
                 "isYou",
                 "pickedRecipient"
+            ]
+        },
+        "participantgiftideas": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "canShare": {
+                    "type": "boolean",
+                    "description": "Whether the exchange is still taking gift ideas."
+                },
+                "canAsk": {
+                    "type": "boolean",
+                    "description": "Whether the caller can ask for gift ideas about their pick."
+                },
+                "yourIdeas": {
+                    "type": "string",
+                    "description": "What the caller most recently wrote about themselves. Empty when they have not."
+                },
+                "yourIdeasSharedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When they wrote it. 0001-01-01T00:00:00+00:00 when there is nothing."
+                },
+                "holdUntilAsked": {
+                    "type": "boolean",
+                    "description": "Whether what they wrote is being kept until whoever drew them asks."
+                },
+                "hasSharedOutrightBefore": {
+                    "type": "boolean",
+                    "description": "Whether anything of theirs has ever been sent outright, which cannot be taken back."
+                },
+                "fromYourPick": {
+                    "type": "string",
+                    "description": "What the caller's pick wrote about themselves, once it has been passed to the caller. Empty otherwise."
+                },
+                "fromYourPickSharedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the pick wrote it. 0001-01-01T00:00:00+00:00 when there is nothing."
+                },
+                "aboutYourPick": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/suggestedgiftideas"
+                    },
+                    "description": "What other people suggested for the caller's pick, newest first."
+                },
+                "askedAboutYourPick": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/askedhelper"
+                    },
+                    "description": "Who the caller has asked about their pick, other than the pick themselves."
+                },
+                "asksForYou": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/giftideaaskforyou"
+                    },
+                    "description": "Asks put to the caller about somebody else. Never says who asked."
+                },
+                "yourOffers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/yourofferedgiftideas"
+                    },
+                    "description": "What the caller has offered about other people, newest first."
+                },
+                "askCandidates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/askcandidate"
+                    },
+                    "description": "Who the caller could ask. Empty when they cannot ask."
+                },
+                "offerCandidates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/offercandidate"
+                    },
+                    "description": "Who the caller could offer ideas about. Empty when the exchange is not taking ideas."
+                }
+            },
+            "required": [
+                "canShare",
+                "canAsk",
+                "yourIdeas",
+                "yourIdeasSharedAt",
+                "holdUntilAsked",
+                "hasSharedOutrightBefore",
+                "fromYourPick",
+                "fromYourPickSharedAt",
+                "aboutYourPick",
+                "askedAboutYourPick",
+                "asksForYou",
+                "yourOffers",
+                "askCandidates",
+                "offerCandidates"
+            ]
+        },
+        "suggestedgiftideas": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "from": {
+                    "type": "string",
+                    "description": "Who suggested it."
+                },
+                "ideas": {
+                    "type": "string",
+                    "description": "What they suggested."
+                },
+                "sharedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When they suggested it."
+                },
+                "wasAskedFor": {
+                    "type": "boolean",
+                    "description": "Whether it answers an ask of the caller's, rather than being offered unprompted."
+                }
+            },
+            "required": [
+                "from",
+                "ideas",
+                "sharedAt",
+                "wasAskedFor"
+            ]
+        },
+        "askedhelper": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Who was asked."
+                },
+                "askedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The most recent time the caller asked them."
+                },
+                "hasAnswered": {
+                    "type": "boolean",
+                    "description": "Whether they have answered."
+                }
+            },
+            "required": [
+                "name",
+                "askedAt",
+                "hasAnswered"
+            ]
+        },
+        "giftideaaskforyou": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "askId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The ask an answer goes back through."
+                },
+                "subjectName": {
+                    "type": "string",
+                    "description": "Who the ideas are wanted for."
+                },
+                "askedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the most recent ask arrived."
+                },
+                "yourAnswer": {
+                    "type": "string",
+                    "description": "What the caller last said in answer. Empty when they have not answered."
+                },
+                "answeredAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When they answered. 0001-01-01T00:00:00+00:00 when there is nothing."
+                }
+            },
+            "required": [
+                "askId",
+                "subjectName",
+                "askedAt",
+                "yourAnswer",
+                "answeredAt"
+            ]
+        },
+        "yourofferedgiftideas": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "subjectName": {
+                    "type": "string",
+                    "description": "Who the ideas are about."
+                },
+                "ideas": {
+                    "type": "string",
+                    "description": "What the caller wrote."
+                },
+                "sharedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When they wrote it."
+                }
+            },
+            "required": [
+                "subjectName",
+                "ideas",
+                "sharedAt"
+            ]
+        },
+        "askcandidate": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "participantId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Who to ask, for AskForGiftIdeasRequest.participantIds."
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Their name, followed by their address only when somebody else shares the name."
+                },
+                "isTheirPick": {
+                    "type": "boolean",
+                    "description": "Whether this is the caller's pick. Offered first, and asked what they would like for themselves."
+                }
+            },
+            "required": [
+                "participantId",
+                "name",
+                "isTheirPick"
+            ]
+        },
+        "offercandidate": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "participantId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Who the ideas would be about, for OfferGiftIdeasRequest.subjectParticipantId."
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Their name, followed by their address only when somebody else shares the name."
+                }
+            },
+            "required": [
+                "participantId",
+                "name"
             ]
         }
     }

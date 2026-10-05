@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useMenuDismissal } from './useMenuDismissal'
 import './AdvancedOptionsMenu.css'
 
 interface AdvancedOptionsMenuProps {
@@ -49,31 +50,8 @@ export function AdvancedOptionsMenu({
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // The same dismissal the profile menu has, and for the same reason: a menu that only closes by
-  // choosing something from it is a menu somebody is stuck in.
-  useEffect(() => {
-    if (!isOpen) return
-
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
-      }
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setIsOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleEscape)
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [isOpen])
+  const close = useCallback(() => setIsOpen(false), [])
+  useMenuDismissal(isOpen, close, menuRef)
 
   const choose = (action: () => void) => {
     setIsOpen(false)

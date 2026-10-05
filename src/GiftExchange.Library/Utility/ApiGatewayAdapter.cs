@@ -33,7 +33,7 @@ internal class ApiGatewayAdapter
         if(deserializedRequest.IsFaulted)
             return ProxyResponseBuilder.Build(deserializedRequest.StatusCode, deserializedRequest.Exception.Message);
 
-        var innerRequest = ApplyAuthenticatedOrganizer(deserializedRequest.Value, request);
+        var innerRequest = ApplyAuthenticatedCaller(deserializedRequest.Value, request);
 
         var (isValid, validationError) = GetValidationError(innerRequest);
 
@@ -82,17 +82,25 @@ internal class ApiGatewayAdapter
     }
 
     /// <summary>
-    /// Replaces any client-supplied organizer email with the one the authorizer established. The
-    /// substitution happens here rather than in each service so that a new endpoint cannot forget
-    /// to do it.
+    /// Replaces any client-supplied organizer or participant email with the one the authorizer
+    /// established. The substitution happens here rather than in each service so that a new
+    /// endpoint cannot forget to do it.
     /// </summary>
-    private static TRequest ApplyAuthenticatedOrganizer<TRequest>(
+    /// <remarks>
+    /// A request is scoped to one or the other, never both.
+    /// </remarks>
+    private static TRequest ApplyAuthenticatedCaller<TRequest>(
         TRequest innerRequest,
         APIGatewayProxyRequest request
     ) =>
-        innerRequest is IOrganizerScopedRequest scopedRequest
-            ? (TRequest)scopedRequest.WithOrganizerEmail(request.GetAuthenticatedEmail())
-            : innerRequest;
+        innerRequest switch
+        {
+            IOrganizerScopedRequest scopedRequest =>
+                (TRequest)scopedRequest.WithOrganizerEmail(request.GetAuthenticatedEmail()),
+            IParticipantScopedRequest scopedRequest =>
+                (TRequest)scopedRequest.WithParticipantEmail(request.GetAuthenticatedEmail()),
+            _ => innerRequest
+        };
 
     private string BuildSerializedErrorResponse(string errorMessage)
     {

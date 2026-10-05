@@ -64,11 +64,17 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
   // The same, for the list of exchanges they are part of, which renders from state rather than
   // reading the ref. Unlike the notice above it, dismissing nothing brings it back.
   const [hideParticipating, setHideParticipating] = useState(dataDeletionRequested)
+  // The name of an exchange they have just left, from the page they left it on, which cannot say so
+  // itself: they are no longer in the exchange it shows.
+  const [leftGiftExchange, setLeftGiftExchange] = useState(
+    () => (location.state as { leftGiftExchange?: string } | null)?.leftGiftExchange ?? ''
+  )
 
   // Read once, above, and then removed from the history entry, so a refresh a day later does not
   // announce a deletion that finished long ago.
   useEffect(() => {
-    if ((location.state as { dataDeletionRequested?: boolean } | null)?.dataDeletionRequested) {
+    const state = location.state as { dataDeletionRequested?: boolean; leftGiftExchange?: string } | null
+    if (state?.dataDeletionRequested || state?.leftGiftExchange) {
       navigate(location.pathname, { replace: true, state: null })
     }
   }, [location.pathname, location.state, navigate])
@@ -251,6 +257,20 @@ export function Home({ userEmail, onSignOut }: HomeProps) {
                 type="button"
                 className="home-notice-dismiss"
                 onClick={() => setDataDeletionRequested(false)}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          {leftGiftExchange && (
+            <div className="home-notice" role="status">
+              <span>You've left {leftGiftExchange}. You can't be added back to it.</span>
+              <button
+                type="button"
+                className="home-notice-dismiss"
+                onClick={() => setLeftGiftExchange('')}
                 aria-label="Dismiss"
               >
                 ×

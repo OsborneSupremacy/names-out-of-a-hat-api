@@ -72,14 +72,16 @@ public class AskForGiftIdeasServiceTests
 
         _sut = new AskForGiftIdeasService(
             _provider,
-            _throttle,
-            new GiftIdeaEmailCompositionService(),
-            new AskPageComposer(),
-            new AutomaticEmailSender(_ses, Substitute.For<ILogger<AutomaticEmailSender>>()),
-            new InvitationReminderService(_provider, Substitute.For<ILogger<InvitationReminderService>>()),
-            new AskQuestionPolicy(),
-            _moderation,
-            Substitute.For<ILogger<AskForGiftIdeasService>>());
+            new GiftIdeaAsking(
+                _provider,
+                _throttle,
+                new GiftIdeaEmailCompositionService(),
+                new AutomaticEmailSender(_ses, Substitute.For<ILogger<AutomaticEmailSender>>()),
+                new InvitationReminderService(_provider, Substitute.For<ILogger<InvitationReminderService>>()),
+                new AskQuestionPolicy(),
+                _moderation,
+                Substitute.For<ILogger<GiftIdeaAsking>>()),
+            new AskPageComposer());
     }
 
     [Fact]

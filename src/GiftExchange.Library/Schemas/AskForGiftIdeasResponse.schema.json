@@ -1,0 +1,49 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": false,
+    "description": "What a round of asking did.",
+    "properties": {
+        "attempts": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/askattempt"
+            },
+            "description": "Each person chosen, in the order offered."
+        },
+        "releasedHeldIdeas": {
+            "type": "boolean",
+            "description": "Whether the pick had written ideas to be passed on if anybody asked, and they have just been sent to the caller."
+        }
+    },
+    "required": [
+        "attempts",
+        "releasedHeldIdeas"
+    ],
+    "definitions": {
+        "askattempt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Who was chosen, as the caller would know them."
+                },
+                "sent": {
+                    "type": "boolean",
+                    "description": "Whether they were asked. False when the caller asked them within the last week."
+                },
+                "previouslyAskedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the caller last asked them, on an ask that was held back. 0001-01-01T00:00:00+00:00 otherwise, and when it is not known."
+                }
+            },
+            "required": [
+                "name",
+                "sent",
+                "previouslyAskedAt"
+            ]
+        }
+    }
+}

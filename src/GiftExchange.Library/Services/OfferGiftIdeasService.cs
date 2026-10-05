@@ -26,64 +26,27 @@ namespace GiftExchange.Library.Services;
 /// the rest when an organizer corrects an address.
 ///
 /// <b>The confirmation page never says whether anything was sent.</b> See
-/// <see cref="ForwardAsync"/> and <see cref="OfferIdeasPageComposer.ComposeShared"/>.
+/// <see cref="GiftIdeaOffering"/>, which does the work and which the participant's signed-in page
+/// shares, and <see cref="OfferIdeasPageComposer.ComposeShared"/>.
 /// </remarks>
 [UsedImplicitly]
 internal class OfferGiftIdeasService : IApiGatewayHandler
 {
-    /// <summary>Statuses during which there is still somebody to share ideas with.</summary>
-    private static readonly ImmutableList<string> AcceptingStatuses =
-        [HatStatus.NamesAssigned, HatStatus.InvitationsSent, HatStatus.CooledOff];
-
-    /// <summary>
-    /// How long one participant must wait before offering ideas about the same person again.
-    /// </summary>
-    /// <remarks>
-    /// A week, matching the Ask. This is the only limit on a message nobody asked for, so it is
-    /// doing more work here than it does there: it caps what any one inbox receives from any one
-    /// sender, which is the number that matters.
-    /// </remarks>
-    private static readonly TimeSpan OfferWindow = TimeSpan.FromDays(7);
-
     private readonly GiftExchangeProvider _giftExchangeProvider;
 
-    private readonly IReplyThrottleProvider _replyThrottleProvider;
-
-    private readonly GiftIdeaContentPolicy _contentPolicy;
-
-    private readonly IContentModerationService _contentModerationService;
-
-    private readonly GiftIdeaEmailCompositionService _composer;
+    private readonly GiftIdeaOffering _offering;
 
     private readonly OfferIdeasPageComposer _pageComposer;
 
-    private readonly AutomaticEmailSender _sender;
-
-    private readonly InvitationReminderService _invitationReminder;
-
-    private readonly ILogger<OfferGiftIdeasService> _logger;
-
     public OfferGiftIdeasService(
         GiftExchangeProvider giftExchangeProvider,
-        IReplyThrottleProvider replyThrottleProvider,
-        GiftIdeaContentPolicy contentPolicy,
-        IContentModerationService contentModerationService,
-        GiftIdeaEmailCompositionService composer,
-        OfferIdeasPageComposer pageComposer,
-        AutomaticEmailSender sender,
-        InvitationReminderService invitationReminder,
-        ILogger<OfferGiftIdeasService> logger
+        GiftIdeaOffering offering,
+        OfferIdeasPageComposer pageComposer
     )
     {
         _giftExchangeProvider = giftExchangeProvider ?? throw new ArgumentNullException(nameof(giftExchangeProvider));
-        _replyThrottleProvider = replyThrottleProvider ?? throw new ArgumentNullException(nameof(replyThrottleProvider));
-        _contentPolicy = contentPolicy ?? throw new ArgumentNullException(nameof(contentPolicy));
-        _contentModerationService = contentModerationService ?? throw new ArgumentNullException(nameof(contentModerationService));
-        _composer = composer ?? throw new ArgumentNullException(nameof(composer));
+        _offering = offering ?? throw new ArgumentNullException(nameof(offering));
         _pageComposer = pageComposer ?? throw new ArgumentNullException(nameof(pageComposer));
-        _sender = sender ?? throw new ArgumentNullException(nameof(sender));
-        _invitationReminder = invitationReminder ?? throw new ArgumentNullException(nameof(invitationReminder));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<APIGatewayProxyResponse> FunctionHandler(
@@ -105,7 +68,7 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
 
         // One page for all of them, so that a guessed token cannot be told apart from a finished
         // exchange, and neither from an ask token used on the wrong page.
-        if (!found || !AcceptingStatuses.Contains(route.HatStatus))
+        if (!found || !GiftIdeaSharing.AcceptingStatuses.Contains(route.HatStatus))
             return Page(ShareIdeasPageComposer.ComposeUnavailable());
 
         var candidates = await _giftExchangeProvider
@@ -139,15 +102,8 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
     }
 
     /// <summary>
-    /// Checks the submission, and either passes it on or hands the form back with the reason.
+    /// Passes the offer on, or hands the form back with the reason it was not.
     /// </summary>
-    /// <remarks>
-    /// The order is deliberate and is not the Ask's. That one claims its throttle slot first,
-    /// reasoning that a refusal costs nothing — true there, where nobody has written anything yet.
-    /// Here the participant has already typed a paragraph, and spending their week on a submission
-    /// that was then refused for a shortened link would be indefensible. So: resolve, then check,
-    /// then claim, then store, then send.
-    /// </remarks>
     private async Task<APIGatewayProxyResponse> OfferAsync(
         GiftIdeaRoute route,
         string token,
@@ -155,146 +111,23 @@ internal class OfferGiftIdeasService : IApiGatewayHandler
         OfferedIdeasSubmission submission
     )
     {
-        // Re-resolved against the database rather than trusted from the page, for the reason
-        // FindOfferTargetAsync gives: this form was rendered by us and edited by them.
-        var (found, target) = submission.SubjectParticipantId == Guid.Empty
-            ? (false, OfferTargets.Empty)
-            : await _giftExchangeProvider
-                .FindOfferTargetAsync(new FindOfferTargetRequest
-                {
-                    HatId = route.HatId,
-                    SharerParticipantId = route.ParticipantId,
-                    SubjectParticipantId = submission.SubjectParticipantId
-                })
-                .ConfigureAwait(false);
-
-        // One notice for "you picked nobody" and for "you picked somebody you may not pick". The
-        // second is only reachable by editing the form, and somebody who has done that is not owed
-        // an explanation of which name they were not allowed to use.
-        if (!found)
-            return Form(token, candidates, Guid.Empty, submission.Ideas, "Choose who these ideas are about.");
-
-        var outcome = await CheckAsync(submission.Ideas, route).ConfigureAwait(false);
-
-        if (outcome != GiftIdeaSubmissionOutcome.Shared)
-        {
-            _logger.LogInformation("Refused an offer of gift ideas: {Outcome}", outcome);
-
-            return Form(
-                token,
-                candidates,
-                target.SubjectParticipantId,
-                submission.Ideas,
-                ShareIdeasPageComposer.ExplainRefusal(outcome));
-        }
-
-        var slot = await _replyThrottleProvider
-            .TryReserveOfferSlotAsync(new ReserveOfferSlotRequest
-            {
-                SharerParticipantId = route.ParticipantId,
-                SubjectParticipantId = target.SubjectParticipantId,
-                Window = OfferWindow
-            })
+        var result = await _offering
+            .OfferAsync(route, submission.SubjectParticipantId, submission.Ideas)
             .ConfigureAwait(false);
 
-        // Nothing is stored either. An offer that was not passed on is not a record of anything,
-        // and keeping it would make the next week's submission look like a repeat.
-        if (!slot.Reserved)
-            return Page(_pageComposer.ComposeAlreadyShared(target.SubjectName, slot.PreviouslyReservedAt));
-
-        // Stored before anything is sent. If sending fails after this the text still exists; the
-        // reverse would lose what somebody wrote.
-        await _giftExchangeProvider
-            .AddOfferedGiftIdeaAsync(new AddOfferedGiftIdeaRequest
+        return result.Outcome switch
+        {
+            OfferOutcome.NobodyChosen =>
+                Form(token, candidates, Guid.Empty, submission.Ideas, "Choose who these ideas are about."),
+            OfferOutcome.Refused =>
+                Form(token, candidates, result.SubjectParticipantId, submission.Ideas, ShareIdeasPageComposer.ExplainRefusal(result.Refusal)),
+            OfferOutcome.AlreadyOffered =>
+                Page(_pageComposer.ComposeAlreadyShared(result.SubjectName, result.PreviouslyOfferedAt)),
+            _ => Page(_pageComposer.ComposeShared(new ComposeOfferedIdeasRequest
             {
-                AuthorParticipantId = route.ParticipantId,
-                SubjectParticipantId = target.SubjectParticipantId,
+                SubjectName = result.SubjectName,
                 Ideas = submission.Ideas
-            })
-            .ConfigureAwait(false);
-
-        await ForwardAsync(route, target, submission.Ideas).ConfigureAwait(false);
-
-        return Page(_pageComposer.ComposeShared(new ComposeOfferedIdeasRequest
-        {
-            SubjectName = target.SubjectName,
-            Ideas = submission.Ideas
-        }));
-    }
-
-    /// <summary>
-    /// Sends the offer to whoever holds the subject's name, when there is somebody and it is not
-    /// the sender.
-    /// </summary>
-    /// <remarks>
-    /// Both silent outcomes return without touching the response, which is the whole point:
-    /// <see cref="OfferAsync"/> renders the same page whichever of the three happened, so nobody can
-    /// learn the draw by offering ideas about each participant in turn and watching what changes.
-    ///
-    /// The second check is unreachable today and is kept anyway. The candidate filter and the
-    /// giver lookup both read <see cref="ParticipantEntity.PickedRecipientParticipantId"/>, so a
-    /// subject that survived the first cannot resolve to the sender as its giver. They are separate
-    /// queries that could be changed apart, though, and what this prevents — an offer coming back
-    /// to its own author, carrying the name of the person they drew — is worth one comparison.
-    ///
-    /// Neither log line names anybody. A log that said who had no giver would be a record of the
-    /// draw.
-    /// </remarks>
-    private async Task ForwardAsync(GiftIdeaRoute route, OfferTarget target, string ideas)
-    {
-        if (string.IsNullOrWhiteSpace(target.Giver.Email))
-        {
-            _logger.LogInformation("Stored an offer of gift ideas with nobody yet to forward it to.");
-            return;
-        }
-
-        if (target.GiverParticipantId == route.ParticipantId)
-        {
-            _logger.LogInformation("Stored an offer of gift ideas that would have returned to its sender.");
-            return;
-        }
-
-        var invitationReminder = await _invitationReminder
-            .ComposeForAsync(target.GiverParticipantId)
-            .ConfigureAwait(false);
-
-        await _sender.SendAsync(
-                target.Giver.Email,
-                GiftIdeaEmailCompositionService.ContributionForwardSubject(route.DisplayNameOf(route.Sender), target.SubjectName),
-                _composer.ComposeOfferedIdeasForward(
-                    route.DisplayNameOf(route.Sender), target.SubjectName, route.HatName, ideas, invitationReminder))
-            .ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Whether there is anything about this submission that stops it being passed on.
-    /// </summary>
-    /// <remarks>
-    /// The same two checks in the same order <see cref="ShareGiftIdeasService"/> runs, cheapest
-    /// first, so text refused on a rule this application can apply itself never reaches Comprehend.
-    ///
-    /// The name looked for is the sender's own pick, not the subject. The check is about what the
-    /// sender must not leak, and the two cannot collide: the subject is somebody the sender did not
-    /// draw, which is exactly who this page offers.
-    /// </remarks>
-    private async Task<GiftIdeaSubmissionOutcome> CheckAsync(string ideas, GiftIdeaRoute route)
-    {
-        var policyOutcome = _contentPolicy.Check(ideas, route.SenderPickedRecipient.Name);
-
-        if (policyOutcome != GiftIdeaSubmissionOutcome.Shared)
-            return policyOutcome;
-
-        var verdict = await _contentModerationService
-            .ModerateAsync(ideas, "gift ideas")
-            .ConfigureAwait(false);
-
-        // An outage is still a refusal, since nothing unchecked is forwarded. It is told apart so
-        // the page says to try again rather than to reword something that may be perfectly fine.
-        return verdict switch
-        {
-            ModerationVerdict.Clean => GiftIdeaSubmissionOutcome.Shared,
-            ModerationVerdict.Toxic => GiftIdeaSubmissionOutcome.RejectedInappropriateContent,
-            _ => GiftIdeaSubmissionOutcome.RejectedModerationUnavailable
+            }))
         };
     }
 

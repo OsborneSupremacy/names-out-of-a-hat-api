@@ -87,24 +87,28 @@ public class InvitationReminderTests
 
         _ask = new AskForGiftIdeasService(
             _provider,
-            _throttle,
-            new GiftIdeaEmailCompositionService(),
-            new AskPageComposer(),
-            sender,
-            _reminder,
-            new AskQuestionPolicy(),
-            _moderation,
-            Substitute.For<ILogger<AskForGiftIdeasService>>());
+            new GiftIdeaAsking(
+                _provider,
+                _throttle,
+                new GiftIdeaEmailCompositionService(),
+                sender,
+                _reminder,
+                new AskQuestionPolicy(),
+                _moderation,
+                Substitute.For<ILogger<GiftIdeaAsking>>()),
+            new AskPageComposer());
 
         _share = new ShareGiftIdeasService(
             _provider,
-            new GiftIdeaContentPolicy(),
-            _moderation,
-            new GiftIdeaEmailCompositionService(),
-            new ShareIdeasPageComposer(),
-            sender,
-            _reminder,
-            Substitute.For<ILogger<ShareGiftIdeasService>>());
+            new GiftIdeaSharing(
+                _provider,
+                new GiftIdeaContentPolicy(),
+                _moderation,
+                new GiftIdeaEmailCompositionService(),
+                sender,
+                _reminder,
+                Substitute.For<ILogger<GiftIdeaSharing>>()),
+            new ShareIdeasPageComposer());
 
         _view = new ViewInvitationService(_provider, new EmailCompositionService());
     }

@@ -1,0 +1,34 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "description": "The caller taking themselves out of a gift exchange. Refused for the organizer.",
+    "properties": {
+        "participantEmail": {
+            "type": "string",
+            "format": "email",
+            "minLength": 5,
+            "maxLength": 254,
+            "description": "The caller's email address. Overwritten with the signed-in address, so naming somebody else does nothing."
+        },
+        "hatId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The gift exchange, which the caller must be taking part in."
+        },
+        "blockOrganizer": {
+            "type": "boolean",
+            "description": "Also stop this organizer adding the caller to any gift exchange. Cannot be undone."
+        },
+        "blockAnywhere": {
+            "type": "boolean",
+            "description": "Also stop anybody adding the caller to a gift exchange. Cannot be undone."
+        }
+    },
+    "required": [
+        "participantEmail",
+        "hatId",
+        "blockOrganizer",
+        "blockAnywhere"
+    ],
+    "additionalProperties": false
+}

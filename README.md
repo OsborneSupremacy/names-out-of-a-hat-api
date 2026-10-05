@@ -225,6 +225,14 @@ What releases a submission is comparing it against when something was last relea
 
 The participant is never told any of this. Not on the page, not by email, and not by a checkbox that quietly changed on them. Telling them would be telling them that whoever holds their name has been asking about them, which is exactly what asking other people instead of the recipient exists to avoid — so the confirmation says the same words whether the ideas are still sitting here or have just gone out. Both are true: they go to that one person, and only if they ask.
 
+### The participant's page does what the emails do
+
+Everything a button in an email does can also be done from the participant's own page once they've signed in: sharing their ideas (held or not), answering an ask, offering ideas about somebody else, asking about their pick, and, behind the advanced options menu so it isn't pressed by accident, leaving. The page also shows what those emails have told them so far.
+
+There's one copy of each rule. The work behind every email page lives in a workflow class (`GiftIdeaSharing`, `GiftIdeaAsking`, `GiftIdeaOffering`, `GiftExchangeLeaving`), and the email pages and the signed-in endpoints both call it. The only difference is how the participant is found. On an email page the token is the whole credential. Here it's the session, and the participant is whichever row the signed-in address holds in the exchange named. The GET-renders, POST-acts split isn't needed, because nothing scans a page's own API calls.
+
+What the page shows is only what has already reached the reader, or would have. A pick's held ideas appear once the giver has asked, and not before. An ask put to somebody names who it's about and never who asked. An offer's author is never told whether it went anywhere. Organizers still can't leave their own exchange: the email path relies on no leave token ever being issued to them, and the signed-in lookup excludes them explicitly.
+
 ### Correcting an address is its own endpoint
 
 Editing a participant resets the exchange to `IN_PROGRESS`, which is correct before the draw and ruinous after it. But the delivery column means organizers now *find out* about bad addresses after invitations have gone out, and the only remedy used to be removing and re-adding the participant — which tears down their assignment.

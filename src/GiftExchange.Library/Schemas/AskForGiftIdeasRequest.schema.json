@@ -1,0 +1,40 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "description": "A round of asking for gift ideas about the caller's pick, without naming the caller.",
+    "properties": {
+        "participantEmail": {
+            "type": "string",
+            "format": "email",
+            "minLength": 5,
+            "maxLength": 254,
+            "description": "The caller's email address. Overwritten with the signed-in address, so naming somebody else does nothing."
+        },
+        "hatId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The gift exchange, which the caller must be taking part in."
+        },
+        "participantIds": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+                "type": "string",
+                "format": "uuid"
+            },
+            "description": "Who to ask. Each is checked against the exchange; anybody not in it is dropped."
+        },
+        "question": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Optional, and sent to everybody asked. May not contain the caller's name or a link."
+        }
+    },
+    "required": [
+        "participantEmail",
+        "hatId",
+        "participantIds",
+        "question"
+    ],
+    "additionalProperties": false
+}

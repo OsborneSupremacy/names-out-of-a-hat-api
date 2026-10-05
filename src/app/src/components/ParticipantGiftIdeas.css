@@ -1,0 +1,252 @@
+/* The gift ideas panels on the participant's page, and the dialogs they open. The panels sit on the
+   organizer page's .info-card; the option rows follow the shake dialog's, inheriting colour and
+   dimming with opacity so most of this needs no dark-mode block. */
+
+.gift-ideas-section {
+  margin-top: 2rem;
+}
+
+.gift-ideas-section > h3 {
+  margin: 0 0 1rem;
+  /* The same size as the participants heading below it, which this sits level with. */
+  color: #1f2937;
+  font-size: 1.25rem;
+}
+
+.gift-ideas-panel {
+  margin-bottom: 1rem;
+}
+
+.gift-ideas-panel h4 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.gift-ideas-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.gift-ideas-panel-header h4 {
+  margin: 0;
+}
+
+.gift-ideas-small-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.gift-ideas-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  opacity: 0.75;
+}
+
+.gift-ideas-empty {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.gift-ideas-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  font-family: inherit;
+  line-height: 1.5;
+  background-color: white;
+  color: inherit;
+  resize: vertical;
+  min-height: 7rem;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.gift-ideas-textarea-short {
+  min-height: 4.5rem;
+}
+
+.gift-ideas-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.gift-ideas-textarea:disabled {
+  background-color: #f9fafb;
+  cursor: not-allowed;
+}
+
+.gift-ideas-choices {
+  border: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+}
+
+.gift-ideas-choices legend,
+.gift-ideas-choices-heading {
+  padding: 0;
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.gift-ideas-choices-heading {
+  margin-top: 1rem;
+}
+
+.gift-ideas-choice {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.gift-ideas-choice input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.gift-ideas-choice-hint {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.gift-ideas-hold {
+  margin-top: 0.75rem;
+}
+
+.gift-ideas-optional {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+/* Advisory, like the shake dialog's warning, and for the same reason needs no dark override. */
+.gift-ideas-warning {
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(217, 119, 6, 0.4);
+  border-radius: 0.375rem;
+  background: rgba(217, 119, 6, 0.08);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.gift-ideas-error {
+  margin-bottom: 0.75rem;
+}
+
+.gift-ideas-confirmation {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(22, 163, 74, 0.4);
+  background: rgba(22, 163, 74, 0.08);
+  font-size: 0.875rem;
+}
+
+.gift-ideas-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.gift-ideas-when {
+  font-size: 0.8rem;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.gift-ideas-entry {
+  margin: 0.75rem 0;
+}
+
+.gift-ideas-entry-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+/* Exactly as written: line breaks kept, and a long unbroken address wrapped rather than allowed to
+   push the page sideways. */
+.gift-ideas-quote {
+  margin: 0;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  border-left: 3px solid #d1d5db;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.gift-ideas-answer {
+  padding: 0.75rem 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.gift-ideas-answer-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+/* The results that replace a dialog's form, given the padding the form had. */
+.gift-ideas-results {
+  padding: 1.5rem;
+  line-height: 1.5;
+}
+
+.gift-ideas-results p {
+  margin: 0 0 0.75rem;
+}
+
+.gift-ideas-results ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .gift-ideas-section > h3 {
+    color: #f9fafb;
+  }
+
+  .gift-ideas-textarea {
+    background-color: #1f2937;
+    border-color: #4b5563;
+  }
+
+  .gift-ideas-textarea:disabled {
+    background-color: #111827;
+  }
+
+  .gift-ideas-quote {
+    border-left-color: #4b5563;
+  }
+
+  .gift-ideas-answer {
+    border-top-color: #374151;
+  }
+}

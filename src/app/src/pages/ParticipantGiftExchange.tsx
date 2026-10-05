@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getParticipantView, ParticipantView } from '../api'
+import { getParticipantView, leaveGiftExchange, ParticipantView } from '../api'
 import { formatExchangeDate, hasExchangeDate } from '../exchangeDate'
 import { Header } from '../components/Header'
 import { Footer } from '../components/Footer'
+import { LeaveGiftExchangeModal } from '../components/LeaveGiftExchangeModal'
+import { ParticipantGiftIdeas } from '../components/ParticipantGiftIdeas'
+import { ParticipantOptionsMenu } from '../components/ParticipantOptionsMenu'
 import './GiftExchangeDetail.css'
 import './ParticipantGiftExchange.css'
 
@@ -14,10 +17,13 @@ interface ParticipantGiftExchangeProps {
 
 /**
  * A gift exchange as somebody taking part in it sees it: what the organizer said about it, who is
- * in it, and who they are giving to. Nothing here can be changed; that is the organizer's page.
+ * in it, who they are giving to, and everything the buttons in their emails do — sharing gift
+ * ideas, asking for them, answering asks, and, behind the menu, leaving. The exchange itself is the
+ * organizer's to change.
  *
- * The server decides which picks are here. Before the exchange is revealed only the caller's own
- * arrives, so this page shows whatever it is given rather than hiding anything itself.
+ * The server decides which picks and which gift ideas are here. Before the exchange is revealed
+ * only the caller's own pick arrives, and only the ideas that have already reached them, so this
+ * page shows whatever it is given rather than hiding anything itself.
  */
 export function ParticipantGiftExchange({ userEmail, onSignOut }: ParticipantGiftExchangeProps) {
   const { hatId } = useParams<{ hatId: string }>()
@@ -27,6 +33,21 @@ export function ParticipantGiftExchange({ userEmail, onSignOut }: ParticipantGif
   const [error, setError] = useState('')
   // Theirs, for the header. null until the exchange arrives, as the header expects.
   const [givenName, setGivenName] = useState<string | null>(null)
+  const [showLeaveModal, setShowLeaveModal] = useState(false)
+
+  // After something is shared or asked, so it shows up where it belongs. Quietly, without the
+  // loading state: the panels stay where they are, and so does whatever they just said.
+  const refresh = useCallback(async () => {
+    if (!hatId) return
+    setView(await getParticipantView(userEmail, hatId))
+  }, [userEmail, hatId])
+
+  const handleLeave = async (blockOrganizer: boolean, blockAnywhere: boolean) => {
+    if (!view) return
+    await leaveGiftExchange(userEmail, view.hatId, blockOrganizer, blockAnywhere)
+    // Home says so, because this page cannot: they are no longer in the exchange it would show.
+    navigate('/', { state: { leftGiftExchange: view.name } })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -86,6 +107,9 @@ export function ParticipantGiftExchange({ userEmail, onSignOut }: ParticipantGif
             <div className="hat-detail">
               <div className="hat-header">
                 <h2>{view.name}</h2>
+                <div className="hat-actions">
+                  <ParticipantOptionsMenu canLeave={view.canLeave} onLeave={() => setShowLeaveModal(true)} />
+                </div>
               </div>
               <p className="participant-view-organizer">Organized by {view.organizerName}</p>
 
@@ -121,6 +145,14 @@ export function ParticipantGiftExchange({ userEmail, onSignOut }: ParticipantGif
                   </p>
                 </div>
               </div>
+
+              <ParticipantGiftIdeas
+                userEmail={userEmail}
+                hatId={view.hatId}
+                pickName={you?.pickedRecipient ?? ''}
+                giftIdeas={view.giftIdeas}
+                onChanged={refresh}
+              />
 
               <div className="participants-section">
                 <div className="section-header">
@@ -160,6 +192,18 @@ export function ParticipantGiftExchange({ userEmail, onSignOut }: ParticipantGif
           ) : null}
         </div>
       </main>
+
+      {showLeaveModal && view && (
+        <LeaveGiftExchangeModal
+          hatName={view.name}
+          organizerName={view.organizerName}
+          // Mirrors GiftExchangeLeaving.ShowsConsequences: once the exchange has cooled off or
+          // closed, nobody is sent back to the hat.
+          showsConsequences={view.status !== 'READY_TO_CLOSE' && view.status !== 'CLOSED'}
+          onClose={() => setShowLeaveModal(false)}
+          onSubmit={handleLeave}
+        />
+      )}
 
       <Footer />
     </div>

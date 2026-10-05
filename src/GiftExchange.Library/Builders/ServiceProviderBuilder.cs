@@ -144,7 +144,12 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<IValidator<SendInvitationsRequest>, SendInvitationsRequestValidator>()
                 .AddSingleton<IValidator<EditParticipantAddressRequest>, EditParticipantAddressRequestValidator>()
                 .AddSingleton<IValidator<SubmitFeedbackRequest>, SubmitFeedbackRequestValidator>()
-                .AddSingleton<IValidator<ValidateHatRequest>, ValidateHatRequestValidator>();
+                .AddSingleton<IValidator<ValidateHatRequest>, ValidateHatRequestValidator>()
+                .AddSingleton<IValidator<ShareGiftIdeasRequest>, ShareGiftIdeasRequestValidator>()
+                .AddSingleton<IValidator<AnswerGiftIdeaAskRequest>, AnswerGiftIdeaAskRequestValidator>()
+                .AddSingleton<IValidator<OfferGiftIdeasRequest>, OfferGiftIdeasRequestValidator>()
+                .AddSingleton<IValidator<AskForGiftIdeasRequest>, AskForGiftIdeasRequestValidator>()
+                .AddSingleton<IValidator<LeaveGiftExchangeRequest>, LeaveGiftExchangeRequestValidator>();
 
         internal IServiceCollection AddBusinessServices() =>
             services
@@ -200,6 +205,15 @@ internal static class ServiceProviderBuilder
                 // value away from showing somebody an exchange that is not theirs.
                 .AddKeyedSingleton<IApiGatewayHandler, GetParticipantViewService>("get/participating/{email}/{id}")
                 .AddKeyedSingleton<IApiGatewayHandler, GetParticipatingHatsService>("get/participating/{email}")
+
+                // What the email links do, from the participant's own page. Authenticated JSON rather
+                // than a GET-renders, POST-acts pair, because nothing scans a page's own API calls;
+                // the work behind each is shared with the email pages, so the rules are the same.
+                .AddKeyedSingleton<IApiGatewayHandler, ParticipantGiftIdeasService>("put/participating/ideas")
+                .AddKeyedSingleton<IApiGatewayHandler, ParticipantGiftIdeasService>("put/participating/answer")
+                .AddKeyedSingleton<IApiGatewayHandler, ParticipantGiftIdeasService>("post/participating/offer")
+                .AddKeyedSingleton<IApiGatewayHandler, ParticipantGiftIdeasService>("post/participating/ask")
+                .AddKeyedSingleton<IApiGatewayHandler, ParticipantLeaveService>("post/participating/leave")
 
                 .AddKeyedSingleton<IApiGatewayHandler, CreateHatService>("post/hat")
                 .AddKeyedSingleton<IApiGatewayHandler, EditHatService>("put/hat")
@@ -257,6 +271,14 @@ internal static class ServiceProviderBuilder
                 .AddSingleton<GiftIdeaEmailCompositionService>()
                 .AddSingleton<GiftIdeaContentPolicy>()
                 .AddSingleton<AskQuestionPolicy>()
+
+                // The work behind each email link, shared with the participant's signed-in page so
+                // that the two doors to the same action apply the same rules.
+                .AddSingleton<GiftIdeaSharing>()
+                .AddSingleton<GiftIdeaAsking>()
+                .AddSingleton<GiftIdeaOffering>()
+                .AddSingleton<GiftExchangeLeaving>()
+
                 .AddSingleton<IReplyThrottleProvider, ReplyThrottleProvider>()
                 .AddSingleton<AutomaticEmailSender>()
                 .AddSingleton<InvitationReminderService>()

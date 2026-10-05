@@ -15,56 +15,27 @@ namespace GiftExchange.Library.Services;
 /// has the link.
 ///
 /// Both kinds of submission come through here, told apart by which table the token resolves in.
-/// Every check is the same for both; what differs is where the text is stored and who it goes to.
-///
-/// A participant writing about themselves may also ask for their words to be held back until the
-/// person who drew them asks for gift ideas. That is the one thing this handler stores and does not
-/// send — released by <see cref="AskForGiftIdeasService"/> when the ask comes, or here if the ask
-/// came first. Which of the two happened is never shown to the writer: see
-/// <see cref="ForwardIfAlreadyAskedAsync"/>.
+/// What happens to a submission once its route is found is <see cref="GiftIdeaSharing"/>'s, which
+/// the participant's signed-in page shares; this class is the token and the HTML around it.
 /// </remarks>
 [UsedImplicitly]
 internal class ShareGiftIdeasService : IApiGatewayHandler
 {
-    /// <summary>Statuses during which there is still somebody to share ideas with.</summary>
-    private static readonly ImmutableList<string> AcceptingStatuses =
-        [HatStatus.NamesAssigned, HatStatus.InvitationsSent, HatStatus.CooledOff];
-
     private readonly GiftExchangeProvider _giftExchangeProvider;
 
-    private readonly GiftIdeaContentPolicy _contentPolicy;
-
-    private readonly IContentModerationService _contentModerationService;
-
-    private readonly GiftIdeaEmailCompositionService _composer;
+    private readonly GiftIdeaSharing _sharing;
 
     private readonly ShareIdeasPageComposer _pageComposer;
 
-    private readonly AutomaticEmailSender _sender;
-
-    private readonly InvitationReminderService _invitationReminder;
-
-    private readonly ILogger<ShareGiftIdeasService> _logger;
-
     public ShareGiftIdeasService(
         GiftExchangeProvider giftExchangeProvider,
-        GiftIdeaContentPolicy contentPolicy,
-        IContentModerationService contentModerationService,
-        GiftIdeaEmailCompositionService composer,
-        ShareIdeasPageComposer pageComposer,
-        AutomaticEmailSender sender,
-        InvitationReminderService invitationReminder,
-        ILogger<ShareGiftIdeasService> logger
+        GiftIdeaSharing sharing,
+        ShareIdeasPageComposer pageComposer
     )
     {
         _giftExchangeProvider = giftExchangeProvider ?? throw new ArgumentNullException(nameof(giftExchangeProvider));
-        _contentPolicy = contentPolicy ?? throw new ArgumentNullException(nameof(contentPolicy));
-        _contentModerationService = contentModerationService ?? throw new ArgumentNullException(nameof(contentModerationService));
-        _composer = composer ?? throw new ArgumentNullException(nameof(composer));
+        _sharing = sharing ?? throw new ArgumentNullException(nameof(sharing));
         _pageComposer = pageComposer ?? throw new ArgumentNullException(nameof(pageComposer));
-        _sender = sender ?? throw new ArgumentNullException(nameof(sender));
-        _invitationReminder = invitationReminder ?? throw new ArgumentNullException(nameof(invitationReminder));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<APIGatewayProxyResponse> FunctionHandler(
@@ -81,7 +52,7 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
         var (found, route) = await ResolveRouteAsync(SecretToken.Hash(token)).ConfigureAwait(false);
 
         // One page for both, so that a guessed token cannot be told apart from a finished exchange.
-        if (!found || !AcceptingStatuses.Contains(route.HatStatus))
+        if (!found || !GiftIdeaSharing.AcceptingStatuses.Contains(route.HatStatus))
             return Page(ShareIdeasPageComposer.ComposeUnavailable());
 
         if (!request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase))
@@ -141,28 +112,22 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
     }
 
     /// <summary>
-    /// Checks the submission, and either shares it or hands the form back with the reason.
+    /// Shares the submission, or hands the form back with the reason it was refused.
     /// </summary>
-    /// <remarks>
-    /// Stored before anything is sent. If sending fails after this, the submission still exists;
-    /// the reverse would lose what somebody wrote.
-    /// </remarks>
     private async Task<APIGatewayProxyResponse> ShareAsync(
         GiftIdeaRoute route,
         string token,
         SharedIdeasSubmission submission
     )
     {
-        // Ignored outright on a contribution rather than merely unoffered, so a hand-made post
-        // cannot hold back ideas that were asked for.
+        // Worked out here as well as in GiftIdeaSharing, because both pages below describe it.
         var holdUntilAsked = submission.HoldUntilAsked && !route.IsContribution;
 
-        var outcome = await CheckAsync(submission.Ideas, route).ConfigureAwait(false);
+        var outcome = await _sharing
+            .ShareAsync(route, submission.Ideas, holdUntilAsked)
+            .ConfigureAwait(false);
 
         if (outcome != GiftIdeaSubmissionOutcome.Shared)
-        {
-            _logger.LogInformation("Refused a gift ideas submission: {Outcome}", outcome);
-
             return Page(_pageComposer.ComposeForm(new ComposeShareIdeasFormRequest
             {
                 Route = route,
@@ -176,14 +141,6 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
                 HoldUntilAsked = holdUntilAsked,
                 HasSharedOutrightBefore = false
             }));
-        }
-
-        await StoreAsync(route, submission.Ideas, holdUntilAsked).ConfigureAwait(false);
-
-        if (holdUntilAsked)
-            await ForwardIfAlreadyAskedAsync(route, submission.Ideas).ConfigureAwait(false);
-        else
-            await ForwardAsync(route, submission.Ideas).ConfigureAwait(false);
 
         return Page(_pageComposer.ComposeShared(new ComposeSharedIdeasRequest
         {
@@ -191,131 +148,6 @@ internal class ShareGiftIdeasService : IApiGatewayHandler
             Ideas = submission.Ideas,
             HoldUntilAsked = holdUntilAsked
         }));
-    }
-
-    /// <summary>
-    /// Passes a held submission on after all, when the person it is for has already asked.
-    /// </summary>
-    /// <remarks>
-    /// Asking and writing can happen in either order, and a submission written after the ask is owed
-    /// to somebody who is waiting for it. Nothing about this reaches the page: the writer is told the
-    /// same thing either way, because the difference between the two is the fact that their giver
-    /// asked, and that is precisely what asking somebody else about them was meant to keep quiet.
-    ///
-    /// The release is stamped so that the next round of asking does not send the same text again.
-    /// </remarks>
-    private async Task ForwardIfAlreadyAskedAsync(GiftIdeaRoute route, string ideas)
-    {
-        // Nobody has drawn them, so nobody can have asked. The submission is already stored.
-        if (route.GiverParticipantId == Guid.Empty)
-            return;
-
-        var asked = await _giftExchangeProvider
-            .HasAskedForGiftIdeasAsync(new HasAskedForGiftIdeasRequest
-            {
-                AskerParticipantId = route.GiverParticipantId,
-                SubjectParticipantId = route.ParticipantId
-            })
-            .ConfigureAwait(false);
-
-        if (!asked)
-        {
-            _logger.LogInformation("Held a gift ideas submission until somebody asks for it.");
-            return;
-        }
-
-        await ForwardAsync(route, ideas).ConfigureAwait(false);
-
-        await _giftExchangeProvider
-            .MarkGiftIdeaEnquiryReleasedAsync(new MarkGiftIdeaEnquiryReleasedRequest
-            {
-                AskerParticipantId = route.GiverParticipantId,
-                SubjectParticipantId = route.ParticipantId,
-                ReleasedAt = DateTimeOffset.UtcNow
-            })
-            .ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Whether there is anything about this submission that stops it being passed on.
-    /// </summary>
-    /// <remarks>
-    /// Cheapest first, so text refused on a rule this application can apply itself never reaches
-    /// Comprehend.
-    /// </remarks>
-    private async Task<GiftIdeaSubmissionOutcome> CheckAsync(string ideas, GiftIdeaRoute route)
-    {
-        // The writer's own pick, even on a contribution about somebody else. The check is about
-        // what the writer must not leak, and the person reading this knows who wrote it.
-        var policyOutcome = _contentPolicy.Check(ideas, route.SenderPickedRecipient.Name);
-
-        if (policyOutcome != GiftIdeaSubmissionOutcome.Shared)
-            return policyOutcome;
-
-        var verdict = await _contentModerationService
-            .ModerateAsync(ideas, "gift ideas")
-            .ConfigureAwait(false);
-
-        // An outage is still a refusal, since nothing unchecked is forwarded. It is told apart so
-        // the page says to try again rather than to reword something that may be perfectly fine.
-        return verdict switch
-        {
-            ModerationVerdict.Clean => GiftIdeaSubmissionOutcome.Shared,
-            ModerationVerdict.Toxic => GiftIdeaSubmissionOutcome.RejectedInappropriateContent,
-            _ => GiftIdeaSubmissionOutcome.RejectedModerationUnavailable
-        };
-    }
-
-    /// <summary>
-    /// Writes the submission to whichever table it belongs in.
-    /// </summary>
-    /// <remarks>
-    /// Two tables, because the two are not the same claim. What somebody says about themselves is
-    /// theirs; what somebody says about another participant is a suggestion made to the one person
-    /// who asked for it, and must never be read back as the subject's own words.
-    /// </remarks>
-    private Task<Guid> StoreAsync(GiftIdeaRoute route, string ideas, bool holdUntilAsked) =>
-        route.IsContribution switch
-        {
-            true => _giftExchangeProvider.AddContributedGiftIdeaAsync(route.AskId, ideas),
-            false => _giftExchangeProvider.AddGiftIdeaAsync(new AddGiftIdeaRequest
-            {
-                ParticipantId = route.ParticipantId,
-                Ideas = ideas,
-                HoldUntilAsked = holdUntilAsked
-            })
-        };
-
-    private async Task ForwardAsync(GiftIdeaRoute route, string ideas)
-    {
-        // Nobody has drawn this participant, so there is nobody to forward to. The submission is
-        // already stored. A contribution always has somebody — the asker — so this is only ever
-        // reached on the ordinary path.
-        if (string.IsNullOrWhiteSpace(route.Giver.Email))
-        {
-            _logger.LogInformation("Stored a gift ideas submission with nobody yet to forward it to.");
-            return;
-        }
-
-        // Subject and body chosen together, so that the two cannot be made to disagree about which
-        // kind of message this is.
-        var (subject, body) = route.IsContribution switch
-        {
-            true => (
-                GiftIdeaEmailCompositionService.ContributionForwardSubject(route.DisplayNameOf(route.Sender), route.DisplayNameOf(route.Subject)),
-                _composer.ComposeContributionForward(route.DisplayNameOf(route.Sender), route.DisplayNameOf(route.Subject), route.HatName, ideas)),
-            false => (
-                GiftIdeaEmailCompositionService.ForwardSubject(route.DisplayNameOf(route.Sender)),
-                _composer.ComposeForward(
-                    route.DisplayNameOf(route.Sender),
-                    route.HatName,
-                    ideas,
-                    // Only on this path. A contribution goes back to whoever asked for it, and
-                    // they pressed a button to ask.
-                    await _invitationReminder.ComposeForAsync(route.GiverParticipantId).ConfigureAwait(false)))
-        };
-
-        await _sender.SendAsync(route.Giver.Email, subject, body).ConfigureAwait(false);
     }
 
     /// <summary>

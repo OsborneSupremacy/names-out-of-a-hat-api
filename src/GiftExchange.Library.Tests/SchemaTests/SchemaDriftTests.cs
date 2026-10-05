@@ -75,7 +75,22 @@ public class SchemaDriftTests
         { nameof(ParticipatingHatMetaData), "GetParticipatingHatsResponse.schema.json", "definitions/participatinghatmetadata" },
 
         { nameof(ParticipantView), "ParticipantView.schema.json", "" },
-        { nameof(ParticipantViewEntry), "ParticipantView.schema.json", "definitions/participantviewentry" }
+        { nameof(ParticipantViewEntry), "ParticipantView.schema.json", "definitions/participantviewentry" },
+        { nameof(ParticipantGiftIdeas), "ParticipantView.schema.json", "definitions/participantgiftideas" },
+        { nameof(SuggestedGiftIdeas), "ParticipantView.schema.json", "definitions/suggestedgiftideas" },
+        { nameof(AskedHelper), "ParticipantView.schema.json", "definitions/askedhelper" },
+        { nameof(GiftIdeaAskForYou), "ParticipantView.schema.json", "definitions/giftideaaskforyou" },
+        { nameof(YourOfferedGiftIdeas), "ParticipantView.schema.json", "definitions/yourofferedgiftideas" },
+        { nameof(AskCandidate), "ParticipantView.schema.json", "definitions/askcandidate" },
+        { nameof(OfferCandidate), "ParticipantView.schema.json", "definitions/offercandidate" },
+
+        { nameof(ShareGiftIdeasRequest), "ShareGiftIdeasRequest.schema.json", "" },
+        { nameof(AnswerGiftIdeaAskRequest), "AnswerGiftIdeaAskRequest.schema.json", "" },
+        { nameof(OfferGiftIdeasRequest), "OfferGiftIdeasRequest.schema.json", "" },
+        { nameof(AskForGiftIdeasRequest), "AskForGiftIdeasRequest.schema.json", "" },
+        { nameof(AskForGiftIdeasResponse), "AskForGiftIdeasResponse.schema.json", "" },
+        { nameof(AskAttempt), "AskForGiftIdeasResponse.schema.json", "definitions/askattempt" },
+        { nameof(LeaveGiftExchangeRequest), "LeaveGiftExchangeRequest.schema.json", "" }
     };
 
     [Theory]

@@ -75,13 +75,15 @@ public class ShareGiftIdeasServiceTests
 
         _sut = new ShareGiftIdeasService(
             _provider,
-            new GiftIdeaContentPolicy(),
-            _moderation,
-            new GiftIdeaEmailCompositionService(),
-            new ShareIdeasPageComposer(),
-            new AutomaticEmailSender(_ses, Substitute.For<ILogger<AutomaticEmailSender>>()),
-            new InvitationReminderService(_provider, Substitute.For<ILogger<InvitationReminderService>>()),
-            Substitute.For<ILogger<ShareGiftIdeasService>>());
+            new GiftIdeaSharing(
+                _provider,
+                new GiftIdeaContentPolicy(),
+                _moderation,
+                new GiftIdeaEmailCompositionService(),
+                new AutomaticEmailSender(_ses, Substitute.For<ILogger<AutomaticEmailSender>>()),
+                new InvitationReminderService(_provider, Substitute.For<ILogger<InvitationReminderService>>()),
+                Substitute.For<ILogger<GiftIdeaSharing>>()),
+            new ShareIdeasPageComposer());
     }
 
     [Fact]

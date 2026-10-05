@@ -58,6 +58,94 @@ export interface ParticipantView {
   /** yyyy-MM-dd, or 0001-01-01 when the organizer has not given one. See exchangeDate.ts. */
   exchangeDate: string
   participants: ParticipantViewEntry[]
+  /** False for the organizer, who is never offered a way to leave their own exchange. */
+  canLeave: boolean
+  giftIdeas: ParticipantGiftIdeas
+}
+
+/**
+ * What the caller may see and do about gift ideas. Everything in it has already reached them by
+ * email, or would have: a pick's held ideas appear only once asked for, and an ask never says who
+ * asked. Timestamps of 0001-01-01 mean "nothing", as relativeTime.ts expects.
+ */
+export interface ParticipantGiftIdeas {
+  /** Whether the exchange is still taking gift ideas. */
+  canShare: boolean
+  /** Whether the caller can ask for gift ideas about their pick. */
+  canAsk: boolean
+  yourIdeas: string
+  yourIdeasSharedAt: string
+  holdUntilAsked: boolean
+  /** Anything of theirs ever sent outright, which nothing can take back. */
+  hasSharedOutrightBefore: boolean
+  /** The pick's own words, once passed to the caller. Empty otherwise. */
+  fromYourPick: string
+  fromYourPickSharedAt: string
+  /** Other people's suggestions for the caller's pick, newest first. */
+  aboutYourPick: SuggestedGiftIdeas[]
+  /** Who the caller has asked about their pick, other than the pick themselves. */
+  askedAboutYourPick: AskedHelper[]
+  /** Asks put to the caller about somebody else. */
+  asksForYou: GiftIdeaAskForYou[]
+  /** What the caller offered about other people, newest first. */
+  yourOffers: YourOfferedGiftIdeas[]
+  /** The pick first, marked. Empty when the caller cannot ask. */
+  askCandidates: AskCandidate[]
+  /** Everybody but the caller and their pick. Empty when the exchange is not taking ideas. */
+  offerCandidates: OfferCandidate[]
+}
+
+export interface SuggestedGiftIdeas {
+  from: string
+  ideas: string
+  sharedAt: string
+  /** An answer to the caller's ask, rather than offered unprompted. */
+  wasAskedFor: boolean
+}
+
+export interface AskedHelper {
+  name: string
+  askedAt: string
+  hasAnswered: boolean
+}
+
+export interface GiftIdeaAskForYou {
+  askId: string
+  subjectName: string
+  askedAt: string
+  yourAnswer: string
+  answeredAt: string
+}
+
+export interface YourOfferedGiftIdeas {
+  subjectName: string
+  ideas: string
+  sharedAt: string
+}
+
+export interface AskCandidate {
+  participantId: string
+  name: string
+  isTheirPick: boolean
+}
+
+export interface OfferCandidate {
+  participantId: string
+  name: string
+}
+
+export interface AskAttempt {
+  name: string
+  /** False when the caller asked them within the last week. */
+  sent: boolean
+  /** When they were last asked, on an attempt that was held back. 0001-01-01 when not known. */
+  previouslyAskedAt: string
+}
+
+export interface AskForGiftIdeasResponse {
+  attempts: AskAttempt[]
+  /** The pick had ideas waiting for somebody to ask, and they have just been sent to the caller. */
+  releasedHeldIdeas: boolean
 }
 
 export interface ParticipantViewEntry {
@@ -771,5 +859,104 @@ export async function submitFeedback(request: SubmitFeedbackRequest): Promise<vo
 
   if (!response.ok) {
     await handleApiError(response, 'Failed to send your message')
+  }
+}
+
+// What the email links do, from the participant's own page. The server takes the caller from the
+// session and ignores the address in the body, which is there because every request shape names
+// the caller the same way. A refusal arrives as an error carrying the same words the email page
+// would show.
+
+export async function shareGiftIdeas(
+  email: string,
+  hatId: string,
+  ideas: string,
+  holdUntilAsked: boolean
+): Promise<void> {
+  const headers = await getAuthHeaders()
+
+  const response = await fetch(`${apiConfig.endpoint}/participating/ideas`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ participantEmail: email, hatId, ideas, holdUntilAsked }),
+  })
+
+  if (!response.ok) {
+    await handleApiError(response, 'Failed to share your gift ideas')
+  }
+}
+
+export async function answerGiftIdeaAsk(email: string, hatId: string, askId: string, ideas: string): Promise<void> {
+  const headers = await getAuthHeaders()
+
+  const response = await fetch(`${apiConfig.endpoint}/participating/answer`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ participantEmail: email, hatId, askId, ideas }),
+  })
+
+  if (!response.ok) {
+    await handleApiError(response, 'Failed to share your gift ideas')
+  }
+}
+
+/** Never says whether anything was sent, only that it was accepted. */
+export async function offerGiftIdeas(
+  email: string,
+  hatId: string,
+  subjectParticipantId: string,
+  ideas: string
+): Promise<void> {
+  const headers = await getAuthHeaders()
+
+  const response = await fetch(`${apiConfig.endpoint}/participating/offer`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ participantEmail: email, hatId, subjectParticipantId, ideas }),
+  })
+
+  if (!response.ok) {
+    await handleApiError(response, 'Failed to share your gift ideas')
+  }
+}
+
+export async function askForGiftIdeas(
+  email: string,
+  hatId: string,
+  participantIds: string[],
+  question: string
+): Promise<AskForGiftIdeasResponse> {
+  const headers = await getAuthHeaders()
+
+  const response = await fetch(`${apiConfig.endpoint}/participating/ask`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ participantEmail: email, hatId, participantIds, question }),
+  })
+
+  if (!response.ok) {
+    await handleApiError(response, 'Failed to ask for gift ideas')
+  }
+
+  return response.json()
+}
+
+/** Refused for the organizer, who is never offered it. */
+export async function leaveGiftExchange(
+  email: string,
+  hatId: string,
+  blockOrganizer: boolean,
+  blockAnywhere: boolean
+): Promise<void> {
+  const headers = await getAuthHeaders()
+
+  const response = await fetch(`${apiConfig.endpoint}/participating/leave`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ participantEmail: email, hatId, blockOrganizer, blockAnywhere }),
+  })
+
+  if (!response.ok) {
+    await handleApiError(response, 'Failed to leave the gift exchange')
   }
 }

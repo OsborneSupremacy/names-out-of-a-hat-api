@@ -34,6 +34,15 @@ public record ParticipantView
 
     /// <summary>Everybody in the exchange, the caller included, by name.</summary>
     public required ImmutableList<ParticipantViewEntry> Participants { get; init; }
+
+    /// <summary>
+    /// Whether the caller may take themselves out of this exchange. False for the organizer, who is
+    /// never offered a way to leave their own exchange — they can remove themselves, or delete it.
+    /// </summary>
+    public required bool CanLeave { get; init; }
+
+    /// <summary>What the caller may see and do about gift ideas in this exchange.</summary>
+    public required ParticipantGiftIdeas GiftIdeas { get; init; }
 }
 
 public record ParticipantViewEntry
@@ -65,6 +74,8 @@ internal static class ParticipantViews
         AdditionalInformation = string.Empty,
         PriceRange = string.Empty,
         ExchangeDate = DateOnly.MinValue,
-        Participants = []
+        Participants = [],
+        CanLeave = false,
+        GiftIdeas = ParticipantGiftIdeasDefaults.Empty
     };
 }
