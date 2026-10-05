@@ -21,6 +21,13 @@
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
 }
 
+/* 2rem inside the page's own gutter left a phone barely two-thirds of its width for content. */
+@media (max-width: 640px) {
+  .content-wrapper {
+    padding: 1.25rem 1rem;
+  }
+}
+
 .content-wrapper h2 {
   margin-top: 0;
   color: #1f2937;
