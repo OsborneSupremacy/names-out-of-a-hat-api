@@ -1046,7 +1046,20 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                 )}
                 {hat.participants.length > 0 ? (
                   (hat.status === 'CLOSED' || hat.status === 'INVITATIONS_SENT' || hat.status === 'READY_TO_CLOSE') ? (
-                    <table className="participants-table">
+                    <>
+                    {/*
+                      * On a phone the table's header row is hidden and each row becomes a card,
+                      * so the "?" that hangs off the Email Status heading goes with it. This is
+                      * the same explanation, offered once above the cards instead.
+                      */}
+                    <button
+                      type="button"
+                      className="delivery-help-mobile"
+                      onClick={() => setShowDeliveryHelp(true)}
+                    >
+                      What do the email statuses mean?
+                    </button>
+                    <table className="participants-table participants-table-stacked">
                       <thead>
                         <tr>
                           <th>Name</th>
@@ -1138,7 +1151,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                                   </div>
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Picked Recipient">
                                 {/*
                                   * The face belongs to the person named here, so it only appears
                                   * once that name is a real one: before the exchange is closed the
@@ -1153,7 +1166,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                                   {displayName(participant.pickedRecipient, people) || 'Not assigned'}
                                 </strong>
                               </td>
-                              <td>
+                              <td data-label="Email Status">
                                 <div className="delivery-cell">
                                   <span
                                     className={`delivery-status delivery-status-${deliveryTone(participant.deliveryStatus)}`}
@@ -1178,8 +1191,9 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                         })}
                       </tbody>
                     </table>
+                    </>
                   ) : (
-                    <table className="participants-table">
+                    <table className="participants-table participants-table-stacked">
                       <thead>
                         <tr>
                           <th>Name</th>
@@ -1270,7 +1284,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                                   )}
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Recipients">
                                 <div className="eligible-recipients-section">
                                   {otherParticipants.length > 0 ? (
                                     <>

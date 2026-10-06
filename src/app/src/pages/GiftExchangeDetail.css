@@ -1205,3 +1205,173 @@
   color: #666666;
   cursor: pointer;
 }
+
+/* Phone widths.
+ *
+ * Three things on this page had a fixed minimum width that a phone could not hold, and each one
+ * pushed the whole document sideways rather than staying inside its own box: the six-step status
+ * bar, the reveal button (which refused to wrap), and the participants table, whose three columns
+ * were wider than the screen as soon as an address or a delivery date was in them. */
+.delivery-help-mobile {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .hat-header h2,
+  .edit-name-input {
+    font-size: 1.5rem;
+  }
+
+  .edit-name-input {
+    min-width: 0;
+  }
+
+  /* Two rows of three rather than one row of six. The connectors only make sense on a single
+   * line, so they go. */
+  .status-progression {
+    padding: 1.25rem 0.5rem;
+  }
+
+  .status-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 1.25rem;
+    column-gap: 0.25rem;
+  }
+
+  .status-step-connector {
+    display: none;
+  }
+
+  .status-step {
+    min-width: 0;
+  }
+
+  .status-step-label {
+    max-width: 100%;
+  }
+
+  .status-action-section {
+    padding: 1.25rem 1rem;
+  }
+
+  .action-button,
+  .action-close-button {
+    min-width: 0;
+    max-width: 100%;
+    padding: 0.875rem 1.25rem;
+    font-size: 1rem;
+    white-space: normal;
+  }
+
+  .validation-errors {
+    max-width: 100%;
+  }
+
+  /* Each participant becomes a card: the header row is hidden and every cell after the first
+   * names its own column instead. */
+  .participants-table-stacked,
+  .participants-table-stacked tbody,
+  .participants-table-stacked tr,
+  .participants-table-stacked td {
+    display: block;
+    width: 100%;
+  }
+
+  .participants-table-stacked thead {
+    display: none;
+  }
+
+  .participants-table-stacked tr {
+    margin-bottom: 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+  }
+
+  .participants-table-stacked td {
+    padding: 0.75rem 1rem;
+    border-radius: 0 !important;
+  }
+
+  .participants-table-stacked td + td {
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .participants-table-stacked td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #6b7280;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* The cell already has its own padding and a divider above it. */
+  .participants-table-stacked .eligible-recipients-section {
+    padding: 0;
+    border-top: none;
+  }
+
+  .editable-status-clickable td:first-child {
+    border-left: none;
+  }
+
+  .editable-status-clickable {
+    border-left: 3px solid #667eea;
+  }
+
+  .editing-row {
+    border: 2px solid #667eea;
+  }
+
+  .participant-email,
+  .delivery-meta {
+    overflow-wrap: anywhere;
+  }
+
+  .participant-edit-actions,
+  .eligible-actions {
+    flex-wrap: wrap;
+  }
+
+  .delivery-help-mobile {
+    display: inline-block;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    background: none;
+    border: none;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #4f46e5;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+}
+
+@media (max-width: 640px) and (prefers-color-scheme: dark) {
+  .participants-table-stacked tr {
+    border-color: #374151;
+  }
+
+  .participants-table-stacked td + td {
+    border-top-color: #374151;
+  }
+
+  .participants-table-stacked td[data-label]::before {
+    color: #9ca3af;
+  }
+
+  .editable-status-clickable {
+    border-left-color: #818cf8;
+  }
+
+  .editing-row {
+    border-color: #818cf8;
+  }
+
+  .delivery-help-mobile {
+    color: #a5b4fc;
+  }
+}
