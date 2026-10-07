@@ -300,6 +300,84 @@ public class EditParticipantNameTests
         inCarols.Person.Name.Should().Be("Bob Original");
     }
 
+    /// <summary>
+    /// The introducer's standing lasts only until the person names themselves. Without this an
+    /// organizer could put back a name the person had just replaced, as often as they liked.
+    /// </summary>
+    [Fact]
+    public async Task EditName_ByWhoeverAddedThem_AfterTheyRenamedThemselves_ReturnsForbidden()
+    {
+        // arrange: Alice adds Joseph, who then signs in and calls himself Joe.
+        var alicesHat = await CreateHatWithOrganizerAsync();
+        var joe = await AddParticipantAsync(alicesHat, "Joseph");
+
+        await RenameThemselvesAsync(joe.Email, "Joe");
+
+        // act
+        var response = await RenameAsync(alicesHat.Organizer.Email, alicesHat.Id, joe.Email, "Joseph");
+
+        // assert
+        response.StatusCode.Should().Be((int)HttpStatusCode.Forbidden);
+        response.Body.Should().Contain("set this name themselves");
+
+        var stored = await _testDataService
+            .GetParticipantAsync(alicesHat.Organizer.Email, alicesHat.Id, joe.Email);
+
+        stored.Person.Name.Should().Be("Joe");
+    }
+
+    /// <summary>
+    /// The add path is the other way to write a name, and the introducer still has standing on it
+    /// until the person claims theirs. After that it must not be a way around the refusal above.
+    /// </summary>
+    [Fact]
+    public async Task AddingThemAgain_ByWhoeverAddedThem_AfterTheyRenamedThemselves_DoesNotRenameThem()
+    {
+        // arrange
+        var alicesHat = await CreateHatWithOrganizerAsync();
+        var alicesOtherHat = await CreateHatWithOrganizerAsync();
+
+        var joe = await AddParticipantAsync(alicesHat, "Joseph");
+
+        await RenameThemselvesAsync(joe.Email, "Joe");
+
+        // act: the second hat has a different organizer, so make it Alice's by adding Joe as her.
+        await AddParticipantAsync(
+            alicesOtherHat with { Organizer = alicesHat.Organizer },
+            "Joseph",
+            joe.Email);
+
+        // assert
+        var stored = await _testDataService
+            .GetParticipantAsync(alicesHat.Organizer.Email, alicesHat.Id, joe.Email);
+
+        stored.Person.Name.Should().Be("Joe");
+    }
+
+    /// <summary>
+    /// Claiming is about who may rename, not a lock on the name: the person can keep changing it.
+    /// </summary>
+    [Fact]
+    public async Task RenamingThemselves_AfterClaimingTheirName_IsStillAllowed()
+    {
+        // arrange
+        var alicesHat = await CreateHatWithOrganizerAsync();
+        var joe = await AddParticipantAsync(alicesHat, "Joseph");
+
+        await RenameThemselvesAsync(joe.Email, "Joe");
+
+        // act
+        var change = await RenameThemselvesAsync(joe.Email, "Joey");
+
+        // assert
+        change.Outcome.Should().Be(NameChangeOutcome.Changed);
+
+        var stored = await _testDataService
+            .GetParticipantAsync(alicesHat.Organizer.Email, alicesHat.Id, joe.Email);
+
+        stored.Person.Name.Should().Be("Joey");
+    }
+
     [Fact]
     public async Task EditName_ForSomebodyNotInTheExchange_ReturnsNotFound()
     {
@@ -367,6 +445,17 @@ public class EditParticipantNameTests
                 })
                 .ToApiGatewayProxyRequest(),
             _context);
+
+    /// <summary>
+    /// What the profile page does when somebody signed in changes their own name.
+    /// </summary>
+    private Task<RenamePersonResponse> RenameThemselvesAsync(string email, string name) =>
+        _provider.RenamePersonAsync(new RenamePersonRequest
+        {
+            Email = email,
+            Name = name,
+            RequestedByEmail = email
+        });
 
     /// <summary>
     /// Mirrors CreateHatService: the organizer is a participant in their own exchange, and both

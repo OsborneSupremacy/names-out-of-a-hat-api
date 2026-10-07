@@ -12,6 +12,9 @@ namespace GiftExchange.Library.Services;
 /// Nothing here can be refused for want of standing. A person may always change their own name,
 /// which is the first of the two rules <c>PersonEntity.AddedByPersonId</c> exists to express, so
 /// the Forbidden the other endpoint can return is unreachable from this one.
+///
+/// Setting it here also claims it. Whoever introduced the caller loses the standing to change it,
+/// so an organizer cannot quietly put back a name the person replaced.
 /// </remarks>
 [UsedImplicitly]
 internal class UpdateProfileService : IApiGatewayHandler

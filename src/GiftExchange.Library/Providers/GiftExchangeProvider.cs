@@ -1996,6 +1996,28 @@ public class GiftExchangeProvider
         && (person.PersonId == byPersonId || person.AddedByPersonId == byPersonId);
 
     /// <summary>
+    /// Whether nobody but this person may change their name.
+    /// </summary>
+    private static bool HasClaimedTheirName(PersonEntity person) =>
+        person.AddedByPersonId == person.PersonId;
+
+    /// <summary>
+    /// Takes the name out of the introducer's hands, because the person has now set it themselves.
+    /// </summary>
+    /// <remarks>
+    /// The introducer's standing exists to fix a typo in a name they typed. Once the person has
+    /// said what they want to be called, the name is no longer the introducer's typing, and letting
+    /// them change it back would let an organizer overrule somebody about their own name, with only
+    /// that somebody ever noticing.
+    ///
+    /// Spelled as a self-reference, which is what <see cref="MayRename"/> already reads as "nobody
+    /// else": the same state as somebody who arrived under their own steam. Who first introduced
+    /// them is given up to do it, and nothing else reads that.
+    /// </remarks>
+    private static void ClaimName(PersonEntity person) =>
+        person.AddedByPersonId = person.PersonId;
+
+    /// <summary>
     /// Changes the name somebody goes by, and reports what stopped it if anything did.
     /// </summary>
     /// <remarks>
@@ -2085,14 +2107,22 @@ public class GiftExchangeProvider
 
             if (!MayRename(person, requesterId))
             {
-                response = RenamePersonResponses.For(NameChangeOutcome.NotTheirNameToChange)
-                    with { PreviousName = person.Name };
+                // Told apart because the organizer being refused may well be the one who added
+                // them, and "somebody else added them" would be news to that organizer.
+                var outcome = HasClaimedTheirName(person)
+                    ? NameChangeOutcome.ClaimedByThePerson
+                    : NameChangeOutcome.NotTheirNameToChange;
+
+                response = RenamePersonResponses.For(outcome) with { PreviousName = person.Name };
                 return;
             }
 
             var previousName = person.Name;
 
             person.Name = request.Name;
+
+            if (isSelf)
+                ClaimName(person);
 
             await context.SaveChangesAsync().ConfigureAwait(false);
 
@@ -4304,11 +4334,16 @@ public class GiftExchangeProvider
 
             if (existing is not null)
             {
-                // Never reassigned: whoever introduced somebody keeps that standing, and adding
-                // them to a second exchange does not transfer it to whoever did the adding.
+                // Never handed to somebody else: whoever introduced somebody keeps that standing,
+                // and adding them to a second exchange does not transfer it to whoever did the
+                // adding. The person can take it, though, and naming themselves here does.
                 if (MayRename(existing, isSelf ? existing.PersonId : introducedById))
                 {
                     existing.Name = request.Name;
+
+                    if (isSelf)
+                        ClaimName(existing);
+
                     await context.SaveChangesAsync().ConfigureAwait(false);
                 }
 

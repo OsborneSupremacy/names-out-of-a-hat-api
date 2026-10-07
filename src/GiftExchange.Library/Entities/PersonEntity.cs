@@ -35,8 +35,12 @@ public class PersonEntity
     /// through the rule instead of needing an exception to it: a person may always change their own
     /// name, and "nobody introduced them" is spelled as "they introduced themselves".
     ///
-    /// Never reassigned. An organizer adding somebody who is already known does not acquire their
-    /// name — the person is found, and the name they already have stands.
+    /// Never handed to another organizer. One adding somebody who is already known does not acquire
+    /// their name; the person is found, and the name they already have stands.
+    ///
+    /// The person can take it, though. Once they set their own name this becomes their own id, and
+    /// whoever introduced them can no longer change it. Who that was is given up to do it; this
+    /// column answers whose name it is to change, and nothing reads it for anything else.
     ///
     /// Non-nullable here and nullable in the database, for the reason
     /// <see cref="HatEntity.CopiedFromHatId"/> gives: the column was added to a table that already

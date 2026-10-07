@@ -24,5 +24,11 @@ public enum NameChangeOutcome
     /// exchanges, and without this the second could rename them in the first's — repeatedly, and
     /// invisibly to everybody but the person themselves.
     /// </remarks>
-    NotTheirNameToChange
+    NotTheirNameToChange,
+
+    /// <summary>
+    /// The person has set their own name, so nobody else may change it, including whoever
+    /// introduced them.
+    /// </summary>
+    ClaimedByThePerson
 }

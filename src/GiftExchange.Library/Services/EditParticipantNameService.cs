@@ -28,6 +28,9 @@ namespace GiftExchange.Library.Services;
 /// <c>GiftExchangeProvider.RenamePersonAsync</c> alongside the write, because the same rule has to
 /// hold for <see cref="UpdateProfileService"/> and for the add path that would otherwise be a way
 /// around both.
+///
+/// Introducing somebody gives that standing only until the person sets their own name. After that
+/// the name is theirs alone, and the organizer who added them is refused like anybody else.
 /// </remarks>
 [UsedImplicitly]
 internal class EditParticipantNameService : IApiGatewayHandler
@@ -145,6 +148,10 @@ internal class EditParticipantNameService : IApiGatewayHandler
                 new InvalidOperationException(NotYoursMessage(change.PreviousName)),
                 HttpStatusCode.Forbidden),
 
+            NameChangeOutcome.ClaimedByThePerson => new Result<StatusCodeOnlyResponse>(
+                new InvalidOperationException(ClaimedMessage(change.PreviousName)),
+                HttpStatusCode.Forbidden),
+
             _ => new Result<StatusCodeOnlyResponse>(
                 new InvalidOperationException("The name could not be changed."),
                 HttpStatusCode.InternalServerError)
@@ -160,4 +167,10 @@ internal class EditParticipantNameService : IApiGatewayHandler
     /// </remarks>
     private static string NotYoursMessage(string currentName) =>
         $"{currentName} was added to a gift exchange by somebody else, and a name belongs to the person rather than to one exchange — so this one is not yours to change. They can change it themselves, and so can whoever first added them.";
+
+    /// <summary>
+    /// Says why a name the person chose for themselves is not this organizer's to change.
+    /// </summary>
+    private static string ClaimedMessage(string currentName) =>
+        $"{currentName} has set this name themselves, so only they can change it.";
 }
