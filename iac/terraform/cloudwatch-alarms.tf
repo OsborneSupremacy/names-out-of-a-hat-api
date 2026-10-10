@@ -262,7 +262,13 @@ resource "aws_cloudwatch_metric_alarm" "ses_bounce_rate" {
   # Hold the previous state rather than assume health. Unlike the queues, an absent reputation
   # figure is not evidence of anything good, and this is the one alarm here where quietly deciding
   # that no news is good news would be wrong.
-  treat_missing_data = "missing"
+  #
+  # That is "ignore", not "missing", and the difference showed up in the inbox. SES only publishes
+  # these after there has been mail to rate, so at this volume most hours have no datapoint at all.
+  # "missing" drops the alarm to INSUFFICIENT_DATA for each of those hours and back to OK when the
+  # next figure arrives -- and every return fires ok_actions, a recovery notice for an incident that
+  # never happened. "ignore" keeps OK as OK and ALARM as ALARM through the gaps.
+  treat_missing_data = "ignore"
 
   alarm_actions = [aws_sns_topic.alarms.arn]
   ok_actions    = [aws_sns_topic.alarms.arn]
@@ -281,7 +287,7 @@ resource "aws_cloudwatch_metric_alarm" "ses_complaint_rate" {
   evaluation_periods  = 1
   threshold           = 0.0005
   comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "missing"
+  treat_missing_data  = "ignore" # As above.
 
   alarm_actions = [aws_sns_topic.alarms.arn]
   ok_actions    = [aws_sns_topic.alarms.arn]
