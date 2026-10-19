@@ -27,6 +27,7 @@ import {
   formatExchangeDate,
   fromDateInputValue,
   hasExchangeDate,
+  isTooEarlyToReveal,
   toDateInputValue,
   todayAsDateInputValue,
 } from '../exchangeDate'
@@ -733,6 +734,10 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
     ? ['IN_PROGRESS', 'READY_FOR_ASSIGNMENT', 'NAMES_ASSIGNED'].includes(hat.status)
     : false
 
+  // With the exchange date still well off, a big reveal button is mostly a way to spoil it by
+  // accident. It moves to the menu until the date is close, where revealing early is still possible.
+  const isRevealHeldBack = hat?.status === 'READY_TO_CLOSE' && isTooEarlyToReveal(hat.exchangeDate)
+
   return (
     <div className="app-container">
       <Header
@@ -812,6 +817,7 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                     emailParticipantsUnavailableReason="Add some participants first."
                     onExport={handleExportHat}
                     onEmailParticipants={() => setShowEmailParticipants(true)}
+                    onReveal={isRevealHeldBack ? () => setShowRevealModal(true) : undefined}
                     onReset={() => setShowResetModal(true)}
                     onDelete={() => setShowDeleteModal(true)}
                   />
@@ -972,7 +978,19 @@ export function GiftExchangeDetail({ userEmail, onSignOut }: GiftExchangeDetailP
                   </div>
                 )}
 
-                {hat.status === 'READY_TO_CLOSE' && (
+                {hat.status === 'READY_TO_CLOSE' && isRevealHeldBack && (
+                  <div className="action-container">
+                    <p className="action-hint">
+                      This gift exchange is on {formatExchangeDate(hat.exchangeDate)}. Once it has taken place, come back
+                      and reveal the picked names, so everyone can see who drew whom.
+                    </p>
+                    <p className="action-hint">
+                      If you want to reveal picked names now, use the command in the ☰ menu at the top of this page.
+                    </p>
+                  </div>
+                )}
+
+                {hat.status === 'READY_TO_CLOSE' && !isRevealHeldBack && (
                   <div className="action-container">
                     <button
                       className="action-button action-close-button"

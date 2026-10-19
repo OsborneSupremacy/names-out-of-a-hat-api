@@ -18,6 +18,11 @@ interface AdvancedOptionsMenuProps {
   emailParticipantsUnavailableReason: string
   onExport: () => void
   onEmailParticipants: () => void
+  /**
+   * Offered here only while the exchange date is still a way off. The page holds the reveal button
+   * back then, so it is not pressed by mistake, but the organizer can still reveal early from here.
+   */
+  onReveal?: () => void
   onReset: () => void
   onDelete: () => void
 }
@@ -44,6 +49,7 @@ export function AdvancedOptionsMenu({
   emailParticipantsUnavailableReason,
   onExport,
   onEmailParticipants,
+  onReveal,
   onReset,
   onDelete,
 }: AdvancedOptionsMenuProps) {
@@ -105,6 +111,21 @@ export function AdvancedOptionsMenu({
                 : emailParticipantsUnavailableReason}
             </span>
           </button>
+
+          {onReveal && (
+            <button
+              type="button"
+              role="menuitem"
+              className="advanced-options-item"
+              onClick={() => choose(onReveal)}
+            >
+              <span className="advanced-options-item-label">Reveal Picked Names</span>
+              <span className="advanced-options-item-hint">
+                Email everyone the full list of who picked whose name before the exchange date. This cannot be
+                undone.
+              </span>
+            </button>
+          )}
 
           {/*
             Shown disabled rather than removed once invitations are out. An option that vanishes

@@ -49,3 +49,28 @@ export function todayAsDateInputValue(now: Date = new Date()): string {
   const day = String(now.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+/**
+ * How close the exchange date has to be before the organizer is offered the reveal outright. A few
+ * days of slack covers an exchange that happens a little early, or a date that was a guess.
+ */
+export const REVEAL_LEAD_DAYS = 3
+
+/**
+ * Whether the exchange date is still more than {@link REVEAL_LEAD_DAYS} days off. No date means no
+ * way to tell, so it is never too early.
+ *
+ * Counted in whole calendar days from the reader's own today, so the answer does not change partway
+ * through a day.
+ */
+export function isTooEarlyToReveal(exchangeDate: string | undefined, now: Date = new Date()): boolean {
+  if (!hasExchangeDate(exchangeDate)) return false
+
+  const exchangeDay = Date.parse(`${exchangeDate}T00:00:00Z`)
+  if (Number.isNaN(exchangeDay)) return false
+
+  const today = Date.parse(`${todayAsDateInputValue(now)}T00:00:00Z`)
+  const daysUntil = Math.round((exchangeDay - today) / 86_400_000)
+
+  return daysUntil > REVEAL_LEAD_DAYS
+}

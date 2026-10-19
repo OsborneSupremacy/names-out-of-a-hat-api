@@ -196,4 +196,23 @@ describe('AdvancedOptionsMenu', () => {
 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
+
+  it('offers the reveal only when asked to', async () => {
+    const user = userEvent.setup()
+    const props = renderMenu({ onReveal: vi.fn() })
+
+    await openMenu(user)
+    await user.click(screen.getByRole('menuitem', { name: /Reveal Picked Names/ }))
+
+    expect(props.onReveal).toHaveBeenCalledOnce()
+  })
+
+  it('leaves the reveal out by default', async () => {
+    const user = userEvent.setup()
+    renderMenu()
+
+    await openMenu(user)
+
+    expect(screen.queryByRole('menuitem', { name: /Reveal Picked Names/ })).not.toBeInTheDocument()
+  })
 })

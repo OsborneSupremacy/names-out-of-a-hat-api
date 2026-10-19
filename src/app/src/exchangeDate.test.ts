@@ -4,6 +4,7 @@ import {
   formatExchangeDate,
   fromDateInputValue,
   hasExchangeDate,
+  isTooEarlyToReveal,
   toDateInputValue,
   todayAsDateInputValue,
 } from './exchangeDate'
@@ -36,5 +37,18 @@ describe('exchangeDate', () => {
 
   it('gives today in local time as a date input value', () => {
     expect(todayAsDateInputValue(new Date(2026, 0, 5, 23, 30))).toBe('2026-01-05')
+  })
+
+  it('holds the reveal back until the exchange date is three days off', () => {
+    const now = new Date(2026, 11, 18, 23, 30)
+
+    expect(isTooEarlyToReveal('2026-12-22', now)).toBe(true)
+    expect(isTooEarlyToReveal('2026-12-21', now)).toBe(false)
+    expect(isTooEarlyToReveal('2026-12-01', now)).toBe(false)
+  })
+
+  it('never holds the reveal back without a date', () => {
+    expect(isTooEarlyToReveal(NO_EXCHANGE_DATE)).toBe(false)
+    expect(isTooEarlyToReveal('not a date')).toBe(false)
   })
 })
