@@ -137,7 +137,7 @@ The fix, verified against a live Proofpoint gateway: the token lives in the URL 
 
 The tempting alternative — allowing a token to be used twice — was rejected. A use count trades away the single-use property against an unbounded number of scanner fetches, and every one of those fetches would be issued a real session token. If this ever stops working, the answer is a typed code that never appears in a link at all.
 
-The request endpoint also always reports success, so it can't be used to find out which addresses have accounts.
+The request endpoint also always reports success, so it can't be used to find out which addresses have accounts. The one thing it does refuse is an address at a disposable-mail domain, from a list in `DisposableEmailDomains` that a weekly workflow refreshes and opens as a pull request.
 
 It also sends from this domain to any address anybody types, so it's limited per inbox, keyed like the organizer limits: one link a minute and ten a UTC day. Before the daily limit, one person could be sent 1,440 sign-in links a day, and every one they reported as spam counted against the SES account invitations share. The cost runs the other way now: somebody could spend an inbox's ten and keep its owner out until midnight UTC. That's the trade.
 
@@ -195,11 +195,17 @@ What it will not do is name somebody nothing has been heard about. Only the thre
 
 The email says nothing about the draw. An organizer who is also a participant receives it, and an administrative notice is not a place to let slip what their own invitation was written to keep from them.
 
+The same statuses guard the two moments when a bad address does the most damage. Revealing the picks names anybody whose invitation is known not to have arrived — they still don't know whose name they drew — and points at correcting the address, which resends it. Copying to a new exchange is refused with a 409 while any address is bounced, rejected or failed, on the server as well as in the page, because a copy would carry the bad address into next year.
+
+Some bad addresses can be caught before anything is sent. Adding a participant or correcting an address asks SES whether the address is on the account's suppression list, where SES puts addresses that hard-bounced and then silently drops every later message to. A suppressed address is refused with a 422. The check fails open: an SES outage shouldn't stop anybody adding a participant, and an address that slips through costs one bounce the delivery column then shows.
+
 ### Mail is written for people who never signed up
 
 Almost everybody who receives mail from this application was added by somebody else, and the first they hear of it is an email from a domain they don't know. So invitations come from "Jane Smith via Names Out Of A Hat", every message carries a plain-text part alongside its HTML, and an invitation offers its leave link to the mail client as a `List-Unsubscribe` header. A recipient who wants out and finds no unsubscribe option reaches for "report spam" instead, and a complaint counts against the whole SES account, sign-in links included.
 
 The header deliberately has no `List-Unsubscribe-Post`. One-click unsubscribe has the mail provider POST to the link with nobody on the page, and a POST to the leave link *is* the leave: it removes the participant, sends the organizer back to the hat and tells everybody else to disregard their name. Without it, a client can only open the link, which lands on the same confirmation page as clicking it in the email. Messages that answer something (asks, forwards, notices to the organizer) name only the product in the From line, because a forward that came "via" somebody would say who.
+
+The mail least likely to be filed as spam is mail from somebody the recipient knows, so the organizer can send some themselves. An item in the advanced options menu builds a `mailto:` link to every participant in BCC, with a message suited to where the exchange is: a heads-up before invitations go out, how to find the invitation or the results afterwards, a reminder of the date and budget, or a subject line alone. Addresses that bounced are left out, and the addresses and message can be copied for computers with no mail app. Nothing goes through SES, so none of it counts against anybody's reputation but the organizer's own.
 
 ### An unseen invitation is caught by the email after it
 
@@ -227,7 +233,9 @@ The participant is never told any of this. Not on the page, not by email, and no
 
 ### The participant's page does what the emails do
 
-Everything a button in an email does can also be done from the participant's own page once they've signed in: sharing their ideas (held or not), answering an ask, offering ideas about somebody else, asking about their pick, and, behind the advanced options menu so it isn't pressed by accident, leaving. The page also shows what those emails have told them so far.
+A signed-in home page has two tabs: the exchanges you organize, and the exchanges you're part of. An exchange appears on the second only once invitations have gone out, and opens read-only: what the organizer said about it, who's in it, and who you're giving to — every pairing once it's closed. That view is its own record, `ParticipantView`, rather than a redacted copy of the organizer's, so nothing only the organizer sees can leak through a field somebody forgot to blank.
+
+Everything a button in an email does can also be done from that page: sharing their ideas (held or not), answering an ask, offering ideas about somebody else, asking about their pick, and, behind the advanced options menu so it isn't pressed by accident, leaving. The page also shows what those emails have told them so far.
 
 There's one copy of each rule. The work behind every email page lives in a workflow class (`GiftIdeaSharing`, `GiftIdeaAsking`, `GiftIdeaOffering`, `GiftExchangeLeaving`), and the email pages and the signed-in endpoints both call it. The only difference is how the participant is found. On an email page the token is the whole credential. Here it's the session, and the participant is whichever row the signed-in address holds in the exchange named. The GET-renders, POST-acts split isn't needed, because nothing scans a page's own API calls.
 
@@ -251,9 +259,13 @@ Changing it is its own endpoint, for the reason correcting an address is: `PUT /
 
 An organizer can correct the name a participant goes by, and it's a third endpoint for the same reason the address and the emoji are: `PUT /participant` resets the exchange to `IN_PROGRESS`, and what somebody is called has nothing to do with the draw. Eligibility and picks are stored as participant ids, and the names in the domain records are read back off the person row every time — so a rename after the hat is shaken leaves the hat shaken, and the announcement greets everybody by whatever they're called when it's written.
 
-The part worth saying out loud is the reach. A name belongs to the person, not to their place in one exchange, so renaming somebody changes their name in *every* exchange they take part in — including ones this organizer doesn't run. That's the same property that lets somebody fix their own name once instead of once per hat, and it's why the collision check is wider than the exchange being edited: a name that's free here can be taken there, and letting the write through would leave a stranger's exchange with two people answering to the same thing. Collisions in the caller's own exchanges are named back to them, because those are the ones they can go and fix. A collision in somebody else's is refused and left unnamed — the refusal has to be explicable, and whose guest list it landed on isn't theirs to learn.
+The part worth saying out loud is the reach. A name belongs to the person, not to their place in one exchange, so renaming somebody changes their name in *every* exchange they take part in — including ones this organizer doesn't run. That's the same property that lets somebody fix their own name once instead of once per hat.
 
-Which is also why not everybody may. Having somebody in your exchange isn't standing to say what they're called; *introducing* them is. So `person.added_by_person_id` records who first typed a name in, and exactly two people can change it afterwards: the person themselves, who holds the address the row is identified by, and whoever added them. Everybody else gets a 403 that says so without naming the organizer it's protecting. Without that, two organizers sharing a participant can rename them back and forth, and the only person who'd ever see it is the one being renamed.
+It's also why names aren't unique, not even within one exchange. A refusal over a name already in use would have reached well past the exchange being edited — a rename turned down over a stranger in somebody else's hat. What an exchange actually needs is that the same person isn't in it twice, and the email address is what identifies a person, so duplicate addresses are refused and duplicate names aren't. The shaker and the API identify participants by address rather than by name, and wherever two people in an exchange share a name, anything naming one of them to somebody else adds the address: "Sam (sam@example.com)".
+
+Not everybody may rename, though. Having somebody in your exchange isn't standing to say what they're called; *introducing* them is. So `person.added_by_person_id` records who first typed a name in, and exactly two people can change it afterwards: the person themselves, who holds the address the row is identified by, and whoever added them. Everybody else gets a 403 that says so without naming the organizer it's protecting. Without that, two organizers sharing a participant can rename them back and forth, and the only person who'd ever see it is the one being renamed.
+
+And once the person has spoken for themselves, it's theirs alone. Setting your own name, from your profile, makes `added_by_person_id` your own id — the same state as somebody who arrived under their own steam — so the organizer who introduced you is refused too, with a 403 that says you set it yourself. Otherwise Mary adds "Joseph", he signs in and calls himself "Joe", and Mary puts "Joseph" back.
 
 The rule has to hold on the way in as well, or it's decoration. Adding somebody the application already knows used to write whatever name the organizer typed — so a rename you were refused could be had anyway by removing them and adding them back. It doesn't any more: an existing person keeps the name they have unless the organizer adding them is entitled to state it, which is the same thing that happens when a participant is moved onto an address that already belongs to somebody. Both endpoints and the add path go through one provider method, because the last time this logic existed twice the two copies checked different things.
 
@@ -310,7 +322,8 @@ The pages the API serves from email links set their own, stricter still: no scri
 - **Database** — Aurora DSQL (Postgres) via EF Core, connecting as a non-admin role with IAM auth. Migrations run as admin from their own workflow; the application role can't.
 - **Ephemeral state** — DynamoDB with TTL, for magic-link tokens and throttle windows.
 - **Email** — SES for sending, SQS for fan-out and for delivery events, SNS in between.
-- **Async work** — EventBridge Scheduler for the cool-off transition, the delivery check that follows a send, and a daily sweep over exchange dates; SQS-triggered Lambdas for invitations and delivery events.
+- **Async work** — EventBridge Scheduler for the cool-off transition, the delivery check that follows a send, and a daily sweep over exchange dates; SQS-triggered Lambdas for invitations, delivery events and "delete my data" requests.
+- **Monitoring** — CloudWatch alarms emailed through SNS (Lambda errors and throttles, API 5XX and latency, dead-letter queues, a backed-up invitation queue, SES bounce and complaint rates), one dashboard, and X-Ray tracing on the functions and the API stage. `iac/terraform/cloudwatch-alarms.tf` explains which alarms were left out and why.
 - **Infrastructure** — Terraform, in two independent roots. See below.
 
 ### Repository layout
@@ -324,15 +337,17 @@ The pages the API serves from email links set their own, stricter still: no scri
 | `email/terraform`                | SES identities and email DNS for namesoutofahat.com. Changes almost never, and its failures are silent, which is why it's separate. |
 | `db`                             | SQL migrations for tables and roles.                                                                                                |
 | `scripts`                        | Lambda build script.                                                                                                                |
+| `.github/workflows`              | Deploys, all run by hand: the API, the frontend, database migrations and email. Plus the weekly disposable-domain list refresh.     |
 
 The two Terraform roots have separate state. `iac/` reads `email/` through a remote state data source, so when a new output is added, `email/` has to be applied first, and when one is removed, `iac/` goes first.
 
 ## Running it locally
 
-The React app:
+There's no local API. The React app's dev server talks to the live one at `api.namesoutofahat.com` (set in `src/app/src/config.ts`), so signing in locally sends a real magic link and anything you do changes real data.
 
 ```bash
 cd src/app
+npm install
 npm run dev
 ```
 

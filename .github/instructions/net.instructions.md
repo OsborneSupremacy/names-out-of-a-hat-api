@@ -14,5 +14,5 @@ applyTo: "src/GiftExchange.Library.*/**/*"
 ## Use of .ConfigureAwait
 
 * Use `.ConfigureAwait(false)` in Lambda Functions, except for the top-level handler method.
-* Do not use `.ConfigureAwait(false)` in unit tests. It is not necessary and can bypass parallization configuration in test runners.`
+* Do not use `.ConfigureAwait(false)` in unit tests. It is not necessary and can bypass parallelization configuration in test runners.
 
