@@ -1,8 +1,13 @@
 # Names Out Of A Hat
 
-An application for running a "names out of a hat" gift exchange. It's live at [namesoutofahat.com](https://namesoutofahat.com/).
+An application for running a "names out of a hat" gift exchange.
+
+> [!TIP]
+> It's live at **[namesoutofahat.com](https://namesoutofahat.com/)**. No account to create and nothing to install; sign-in is a link sent to your inbox.
 
 ![Names Out A Hat Screenshot 1](docs/demo-01.gif)
+
+**Contents:** [The gift exchange](#what-is-a-names-out-of-a-hat-gift-exchange) · [Features](#what-this-does-that-a-hat-cannot) · [Lifecycle](#the-lifecycle-of-an-exchange) · [Decisions](#decisions) · [How it's built](#how-its-built) · [Running it locally](#running-it-locally)
 
 ## What is a "names out of a hat" gift exchange?
 
@@ -17,6 +22,7 @@ For families and groups who exchange gifts around Christmas or another holiday, 
 |                                                                      |                                                    |                                                     |
 |----------------------------------------------------------------------|----------------------------------------------------|-----------------------------------------------------|
 | ![Everyone writes their name on a piece of paper](docs/IMG_8224.jpg) | ![All names are put into a hat](docs/IMG_8222.jpg) | ![Names are drawn one at a time](docs/IMG_8223.jpg) |
+| *Everyone writes their name down*                                    | *The names go into a hat*                          | *Names are drawn one at a time*                     |
 
 The original motivation for building this was simply that my family meets around Christmas Day, but we'd like to know who we're buying for by Thanksgiving — and we're rarely in the same room that early. Everything below is what the application turned out to be good for once the drawing itself stopped being the hard part.
 
@@ -24,49 +30,64 @@ The original motivation for building this was simply that my family meets around
 
 Anything a physical hat does well, it does for free. These are the things it can't do at all.
 
-### Nobody has to be in the same room
+### 🌍 Nobody has to be in the same room
 
 The draw happens wherever everyone is, and each person learns who they drew by email.
 
-### The rules are enforced instead of hoped for
+### ✅ The rules are enforced instead of hoped for
 
 Nobody can draw their own name, or the name of anyone marked ineligible for them. With paper, an illegal draw is caught only if the person who drew it says so.
 
-### Ineligibility is per person, and arbitrary
+### 🚫 Ineligibility is per person, and arbitrary
 
 Exclude a spouse. Exclude whoever they drew last year. Exclude a sibling who always guesses. A hat holds one rule — the one everyone remembers to apply — and it applies to everyone equally.
 
-### You can ask what somebody wants without revealing that you drew them
+### 🤫 You can ask what somebody wants without revealing that you drew them
 
 A participant can ask the person whose name they drew what they'd like, and the question arrives without a name on it. They can also ask *around* them — a spouse, a parent, anyone else in the exchange — for people who don't want to tip off the recipient at all. Whatever they share is forwarded on by email, with the asker's identity still withheld. The paper equivalent requires a trusted go-between who then knows the answer.
 
-### Sharing gift ideas takes one button
+### 💡 Sharing gift ideas takes one button
 
 No account and no app. The SHARE GIFT IDEAS button in an email opens a page with a box to type in, and what's typed there goes to the one person it's for. The link is unique to that participant, or to that particular ask, which is how the ideas get routed to the right person while the person holding their name stays anonymous. Coming back to the same link shows what was shared last, so changing your mind is an edit rather than starting again.
 
 There's also a checkbox for people who'd rather not push ideas at somebody who never asked: tick it and the ideas are written down and sent to nobody, until the person who picked your name asks for gift ideas. If they never ask, nobody ever sees them.
 
-### You can see whether the invitation actually arrived
+### 📬 You can see whether the invitation actually arrived
 
 Every invitation's delivery status is visible per participant — delivered, bounced, marked as spam, or nothing heard yet. When an address is wrong you can correct just that one and resend to just that person, without disturbing the draw. Hand somebody the wrong slip of paper and it's simply gone.
 
 And you don't have to go and look. A couple of hours after invitations go out, anything that came back is emailed to the organizer, naming the person, the address, and what the receiving server said about it.
 
-### The details travel with the assignment
+### 📝 The details travel with the assignment
 
 The price range, any additional instructions, and roughly when the exchange is happening are in every invitation, so nobody has to remember the number somebody said out loud in November.
 
-### Next year is one click
+### 🔁 Next year is one click
 
 A finished exchange can be copied into a new one with the same people and the same rules, and with everybody's recipient from last time excluded automatically. A hat has no memory.
 
-### It ends with a record
+### 📜 It ends with a record
 
 When the organizer closes the exchange, everyone receives the full list of who drew whom. If they've given a date and forget, they're emailed once, a week after it, to ask whether it's happened.
 
 ## The lifecycle of an exchange
 
 An exchange moves through a fixed sequence of states, and what's permitted depends on where it is:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> IN_PROGRESS
+    IN_PROGRESS --> READY_FOR_ASSIGNMENT: validated
+    READY_FOR_ASSIGNMENT --> NAMES_ASSIGNED: hat shaken
+    NAMES_ASSIGNED --> INVITATIONS_SENT: invitations sent
+    INVITATIONS_SENT --> READY_TO_CLOSE: cool-off elapses
+    READY_TO_CLOSE --> CLOSED: organizer reveals picks
+    CLOSED --> [*]
+    READY_FOR_ASSIGNMENT --> IN_PROGRESS: edited or reset
+    NAMES_ASSIGNED --> IN_PROGRESS: edited or reset
+    INVITATIONS_SENT --> IN_PROGRESS: a participant leaves
+```
 
 | Status                 | What it means                                                                            |
 |------------------------|------------------------------------------------------------------------------------------|
@@ -80,6 +101,20 @@ An exchange moves through a fixed sequence of states, and what's permitted depen
 ## Decisions
 
 Most of the interesting decisions in this codebase are about what *not* to do. They're documented at the call sites too; this is the short version.
+
+<details>
+<summary><strong>Jump to a decision</strong></summary>
+
+- **The draw:** [brute force, on purpose](#the-draw-is-brute-force-on-purpose) · [the shape of the draw](#the-organizer-chooses-the-shape-of-the-draw)
+- **Closing and dates:** [cool-off before closing](#cool-off-before-closing) · [the exchange date](#the-exchange-date-is-approximate-and-runs-a-daily-sweep)
+- **Links in email:** [magic-link sign-in](#sign-in-is-a-magic-link-and-redemption-sits-behind-a-button) · [the Ask](#the-ask-is-two-endpoints-for-one-action-for-the-same-reason) · [leaving](#leaving-is-a-way-out-that-the-organizer-cant-reverse) · [do-not-add lists](#three-do-not-add-lists-so-leaving-sticks)
+- **Gift ideas:** [honest anonymity](#anonymity-is-described-honestly-rather-than-overstated) · [a page, not a reply](#sharing-ideas-is-a-page-not-a-reply) · [held ideas](#held-ideas-are-released-by-the-ask-not-by-the-asking-of-them) · [the participant's page](#the-participants-page-does-what-the-emails-do)
+- **Mail and delivery:** [delivery, not opens](#delivery-tracking-records-delivery-not-opens) · [bad addresses](#bad-addresses-are-pushed-not-left-to-be-found) · [mail for people who never signed up](#mail-is-written-for-people-who-never-signed-up) · [unseen invitations](#an-unseen-invitation-is-caught-by-the-email-after-it)
+- **Participants:** [correcting an address](#correcting-an-address-is-its-own-endpoint) · [emoji](#a-participants-emoji-is-stored-not-derived) · [renaming](#renaming-somebody-renames-them-everywhere)
+- **Abuse and security:** [exchange limits](#five-new-exchanges-a-day-and-five-open-at-once) · [the send ledger](#sending-is-counted-by-who-was-mailed-and-the-count-outlives-the-exchange) · [limits at a glance](#limits-at-a-glance) · [moderation](#user-content-is-moderated-and-fails-closed) · [security headers](#security-headers-come-from-a-function-not-a-policy)
+- **Code:** [the wire contract](#the-wire-contract-lives-in-the-repo-not-in-an-export) · [conventions](#conventions)
+
+</details>
 
 ### The draw is brute force, on purpose
 
@@ -113,7 +148,12 @@ The setting belongs to the draw, not to the exchange, so it isn't stored. Once n
 
 ### Cool-off before closing
 
-Closing reveals every pick, permanently, to everybody. It's the only irreversible action in the application, so it isn't available immediately — an exchange has to sit in `INVITATIONS_SENT` for a while before it can be closed, which is enough to stop a mis-click from spoiling everyone's surprise. The transition is made by a scheduled job, not by a timestamp check on read, so the state is a real one rather than a computed one.
+> [!IMPORTANT]
+> Closing reveals every pick, permanently, to everybody. It's the only irreversible action in the application.
+
+So it isn't available immediately — an exchange has to sit in `INVITATIONS_SENT` for five minutes before it can be closed, which is enough to stop a mis-click straight after sending from spoiling everyone's surprise. The transition is made by a scheduled job, not by a timestamp check on read, so the state is a real one rather than a computed one.
+
+Five minutes doesn't help an exchange whose date is still weeks away, which would otherwise spend those weeks with a big reveal button on its page. So while the exchange date is more than three days off, the page holds the button back and says when to come back instead. Revealing early is still possible from the advanced options menu, where it isn't pressed by accident. Three days of slack covers a party that happens a little early or a date that was a guess, and an exchange with no date always shows the button, since there's no way to tell it's too early.
 
 ### The exchange date is approximate, and runs a daily sweep
 
@@ -285,19 +325,37 @@ Every invitation writes a row to `organizer_send` before it's queued: which orga
 
 The ledger does three jobs.
 
-It caps how many distinct people one organizer can mail: 100 in 24 hours and 250 in 7 days, both rolling. That turns create, send, delete, repeat from endless into two exchanges' worth. Counting distinct addresses is what keeps it fair. Re-sending to last year's family costs nothing new, while mailing a fresh list every hour runs out by lunchtime. A send is allowed or refused whole, never half an exchange, and the refusal is a 429 that gives a UTC time. It doesn't suggest deleting anything, because deleting doesn't help.
+**1. It caps how many people one organizer can reach.** It caps how many distinct people one organizer can mail: 100 in 24 hours and 250 in 7 days, both rolling. That turns create, send, delete, repeat from endless into two exchanges' worth. Counting distinct addresses is what keeps it fair. Re-sending to last year's family costs nothing new, while mailing a fresh list every hour runs out by lunchtime. A send is allowed or refused whole, never half an exchange, and the refusal is a 429 that gives a UTC time. It doesn't suggest deleting anything, because deleting doesn't help.
 
-It lets a complaint or a bounce find its organizer after the exchange is gone. An SES event names a participant and nothing else, and until the ledger existed the only route from a participant to an organizer ran through the participant row. So an organizer who sent and then deleted straight away left every complaint that arrived later with nobody to hold responsible.
+**2. It lets a complaint or a bounce find its organizer after the exchange is gone.** An SES event names a participant and nothing else, and until the ledger existed the only route from a participant to an organizer ran through the participant row. So an organizer who sent and then deleted straight away left every complaint that arrived later with nobody to hold responsible.
 
-And it gives bounces a denominator. The standing check that sits in front of every send path stops an organizer at 3 spam complaints, or at 5 people between complaints and "never add me again" requests, over 90 days. Those are absolute counts, which is safe because the cap already bounds how many people an organizer can reach. Hard bounces are judged as a share instead: an organizer is paused once at least 5 distinct addresses have bounced and those make up at least 10% of the people they mailed. That's SES's own threshold for pausing the whole account, applied to one organizer. A share is fair because a large exchange collects typos just by being large, and the minimum of 5 means one wrong address in a family of eight doesn't trip it. Transient bounces, like a full mailbox, don't count. The complaint and bounce records outlive the exchange just as the ledger does, and nothing in the application can clear them. The pause lifts when they age out of the window.
+**3. It gives bounces a denominator.** The standing check that sits in front of every send path stops an organizer at 3 spam complaints, or at 5 people between complaints and "never add me again" requests, over 90 days. Those are absolute counts, which is safe because the cap already bounds how many people an organizer can reach. Hard bounces are judged as a share instead: an organizer is paused once at least 5 distinct addresses have bounced and those make up at least 10% of the people they mailed. That's SES's own threshold for pausing the whole account, applied to one organizer. A share is fair because a large exchange collects typos just by being large, and the minimum of 5 means one wrong address in a family of eight doesn't trip it. Transient bounces, like a full mailbox, don't count. The complaint and bounce records outlive the exchange just as the ledger does, and nothing in the application can clear them. The pause lifts when they age out of the window.
 
 All three are keyed by the organizer's inbox rather than by how they spelled it. Signing in takes nothing but an inbox, and `me+1@gmail.com`, `me+2@gmail.com` and `m.e@gmail.com` all deliver to the same one. Keyed by spelling, each was a fresh organizer with its own cap and a clean record. So the organizer column in the ledger, the complaint and bounce records and the "don't let this organizer add me" list holds a mailbox key: lower-cased and trimmed as before, without a `+tag`, and for Gmail without the dots Gmail ignores. It's a key and never an address. Nobody's exchanges, session or mail change, and an organizer's `+tag` stays theirs. A catch-all domain still yields as many inboxes as its owner wants, but that takes owning a domain, and the complaints it draws land on SES reputation the same way, so the standing check catches it the same way.
+
+### Limits at a glance
+
+Every number from the sections above and below, in one place. All windows roll unless they say otherwise.
+
+| What                                 | Limit                                                        | Keyed by        | When it's hit |
+|--------------------------------------|--------------------------------------------------------------|-----------------|---------------|
+| Sign-in links                        | 1 a minute, 10 a UTC day                                     | Inbox           | Silently not sent |
+| Sign-in link requests                | 10 in 5 minutes                                              | IP (web ACL)    | 429 |
+| New exchanges                        | 5 in 24 hours                                                | Organizer       | 429 |
+| Open exchanges                       | 5 not `CLOSED`                                               | Organizer       | 409 |
+| Distinct people mailed               | 100 in 24 hours, 250 in 7 days                               | Organizer inbox | 429 |
+| Spam complaints                      | 3 in 90 days                                                 | Organizer inbox | Sending paused |
+| Complaints plus do-not-add refusals  | 5 people in 90 days                                          | Organizer inbox | Sending paused |
+| Hard bounces                         | 5 addresses *and* 10% of people mailed, in 90 days           | Organizer inbox | Sending paused |
+| Asks for gift ideas                  | 1 a week                                                     | Asker and asked | Skipped, and the page says so |
+| Correcting one participant's address | 1 in 15 minutes                                              | Participant     | 429 |
+| Everything else                      | 10 requests a second, bursting to 25                         | API stage       | 429 |
 
 ### User content is moderated, and fails closed
 
 Free-text fields go through Amazon Comprehend's toxicity detection. If the check can't be performed, the content is rejected rather than accepted. Each check is a paid call, so it happens only once the exchange has been found, belongs to the caller and can take the change, and only for text that differs from what's stored: saving a form without touching a field doesn't check it again. The API stage also has a ceiling of ten requests a second, bursting to 25, across the routes that have no limit of their own.
 
-Moderation catches abuse, not scams, and a polite "claim your gift card here" passes it. So nothing an organizer writes that goes out in mail may contain a link: the exchange's name, price range and instructions, the organizer's name, or a participant's name. Those go from this domain to addresses the organizer chose, to people who asked for nothing, which makes a link there the most useful thing a phisher could get this application to send. Shared gift ideas can still carry links, for the reasons given below.
+Moderation catches abuse, not scams, and a polite "claim your gift card here" passes it. So nothing an organizer writes that goes out in mail may contain a link: the exchange's name, price range and instructions, the organizer's name, or a participant's name. Those go from this domain to addresses the organizer chose, to people who asked for nothing, which makes a link there the most useful thing a phisher could get this application to send. Shared gift ideas can still carry links, for the reasons given [above](#sharing-ideas-is-a-page-not-a-reply).
 
 ### Security headers come from a function, not a policy
 
@@ -317,14 +375,16 @@ The pages the API serves from email links set their own, stricter still: no scri
 
 ## How it's built
 
-- **Frontend** — React 19 + TypeScript on Vite, served from S3 behind CloudFront, with a CloudFront function handling SPA routing.
-- **API** — .NET 10 on AWS Lambda behind API Gateway. A single router Lambda dispatches on `method + resource` to a keyed handler, so one deployment artifact serves every endpoint.
-- **Database** — Aurora DSQL (Postgres) via EF Core, connecting as a non-admin role with IAM auth. Migrations run as admin from their own workflow; the application role can't.
-- **Ephemeral state** — DynamoDB with TTL, for magic-link tokens and throttle windows.
-- **Email** — SES for sending, SQS for fan-out and for delivery events, SNS in between.
-- **Async work** — EventBridge Scheduler for the cool-off transition, the delivery check that follows a send, and a daily sweep over exchange dates; SQS-triggered Lambdas for invitations, delivery events and "delete my data" requests.
-- **Monitoring** — CloudWatch alarms emailed through SNS (Lambda errors and throttles, API 5XX and latency, dead-letter queues, a backed-up invitation queue, SES bounce and complaint rates), one dashboard, and X-Ray tracing on the functions and the API stage. `iac/terraform/cloudwatch-alarms.tf` explains which alarms were left out and why.
-- **Infrastructure** — Terraform, in two independent roots. See below.
+| Layer               | Built with |
+|---------------------|------------|
+| 🖥️ Frontend        | React 19 + TypeScript on Vite, served from S3 behind CloudFront, with a CloudFront function handling SPA routing. |
+| ⚙️ API             | .NET 10 on AWS Lambda behind API Gateway. A single router Lambda dispatches on `method + resource` to a keyed handler, so one deployment artifact serves every endpoint. |
+| 🗄️ Database        | Aurora DSQL (Postgres) via EF Core, connecting as a non-admin role with IAM auth. Migrations run as admin from their own workflow; the application role can't. |
+| ⏳ Ephemeral state | DynamoDB with TTL, for magic-link tokens and throttle windows. |
+| ✉️ Email           | SES for sending, SQS for fan-out and for delivery events, SNS in between. |
+| 🕰️ Async work      | EventBridge Scheduler for the cool-off transition, the delivery check that follows a send, and a daily sweep over exchange dates; SQS-triggered Lambdas for invitations, delivery events and "delete my data" requests. |
+| 📈 Monitoring      | CloudWatch alarms emailed through SNS (Lambda errors and throttles, API 5XX and latency, dead-letter queues, a backed-up invitation queue, SES bounce and complaint rates), one dashboard, and X-Ray tracing on the functions and the API stage. `iac/terraform/cloudwatch-alarms.tf` explains which alarms were left out and why. |
+| 🏗️ Infrastructure  | Terraform, in two independent roots. See below. |
 
 ### Repository layout
 
@@ -339,11 +399,13 @@ The pages the API serves from email links set their own, stricter still: no scri
 | `scripts`                        | Lambda build script.                                                                                                                |
 | `.github/workflows`              | Deploys, all run by hand: the API, the frontend, database migrations and email. Plus the weekly disposable-domain list refresh.     |
 
-The two Terraform roots have separate state. `iac/` reads `email/` through a remote state data source, so when a new output is added, `email/` has to be applied first, and when one is removed, `iac/` goes first.
+> [!NOTE]
+> The two Terraform roots have separate state. `iac/` reads `email/` through a remote state data source, so when a new output is added, `email/` has to be applied first, and when one is removed, `iac/` goes first.
 
 ## Running it locally
 
-There's no local API. The React app's dev server talks to the live one at `api.namesoutofahat.com` (set in `src/app/src/config.ts`), so signing in locally sends a real magic link and anything you do changes real data.
+> [!WARNING]
+> There's no local API. The React app's dev server talks to the live one at `api.namesoutofahat.com` (set in `src/app/src/config.ts`), so signing in locally sends a real magic link and anything you do changes real data.
 
 ```bash
 cd src/app
@@ -351,7 +413,7 @@ npm install
 npm run dev
 ```
 
-Tests:
+### Tests
 
 ```bash
 dotnet test
